@@ -116,7 +116,9 @@ async function blobToCanvas(blob) {
 
 async function inpaintCanvas(canvas, rects, radius = 5) {
   if (!rects.length) return canvas;
-  const src = cv.imread(canvas);
+  const srcRgba = cv.imread(canvas);
+  const src = new cv.Mat();
+  cv.cvtColor(srcRgba, src, cv.COLOR_RGBA2RGB);
   const mask = new cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC1);
 
   try {
@@ -127,9 +129,24 @@ async function inpaintCanvas(canvas, rects, radius = 5) {
     dst.delete();
     return canvas;
   } finally {
+    srcRgba.delete();
     src.delete();
     mask.delete();
   }
+}
+
+function normalizeError(error) {
+  if (typeof error === "number" && window.cv?.exceptionFromPtr) {
+    try {
+      const cvErr = cv.exceptionFromPtr(error);
+      const details = cvErr?.msg || cvErr?.toString?.() || `OpenCV error ptr ${error}`;
+      return details;
+    } catch {
+      return `OpenCV numeric error: ${error}`;
+    }
+  }
+  if (error?.message) return error.message;
+  return String(error);
 }
 
 function downloadBytes(bytes, fileName, mimeType) {
@@ -177,9 +194,19 @@ async function processPdf(file, config) {
     }
 
     await inpaintCanvas(canvas, rects);
-    const jpgBytes = await new Promise((resolve) =>
-      canvas.toBlob(async (blob) => resolve(new Uint8Array(await blob.arrayBuffer())), "image/jpeg", 0.95)
-    );
+    const jpgBytes = await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        async (blob) => {
+          if (!blob) {
+            reject(new Error("canvas.toBlob вернул пустой результат для PDF-страницы"));
+            return;
+          }
+          resolve(new Uint8Array(await blob.arrayBuffer()));
+        },
+        "image/jpeg",
+        0.95
+      );
+    });
     const jpg = await outPdf.embedJpg(jpgBytes);
     const outPage = outPdf.addPage([canvas.width, canvas.height]);
     outPage.drawImage(jpg, { x: 0, y: 0, width: canvas.width, height: canvas.height });
@@ -231,7 +258,9 @@ async function processPptx(file, config) {
     const ext = getImageExt(mediaPath);
     const mime = ext === "png" ? "image/png" : "image/jpeg";
     const quality = mime === "image/jpeg" ? 0.95 : undefined;
-    const outBlob = await new Promise((resolve) => canvas.toBlob(resolve, mime, quality));
+    const outBlob = await new Promise((resolve, reject) =>
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error(`canvas.toBlob пустой для ${mediaPath}`))), mime, quality)
+    );
     const outBytes = new Uint8Array(await outBlob.arrayBuffer());
     zip.file(mediaPath, outBytes);
 
@@ -285,7 +314,7 @@ async function run() {
     log("\nВсе файлы обработаны");
   } catch (error) {
     setStatus("Ошибка");
-    log(`ОШИБКА: ${error?.message || String(error)}`);
+    log(`ОШИБКА: ${normalizeError(error)}`);
     console.error(error);
   } finally {
     els.processBtn.disabled = false;
