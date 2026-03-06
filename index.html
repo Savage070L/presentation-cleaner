@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Watermark Remover Web</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hero">
+        <h1>Watermark Remover Web</h1>
+        <p>Локальная обработка PDF/PPTX в браузере (GitHub Pages)</p>
+      </header>
+
+      <section class="panel">
+        <h2>Входные файлы</h2>
+        <input id="fileInput" type="file" multiple accept=".pdf,.pptx,.PDF,.PPTX" />
+        <p class="hint">Файлы не отправляются на сервер, обработка идет в вашем браузере.</p>
+      </section>
+
+      <section class="panel options">
+        <h2>Параметры удаления</h2>
+        <label class="row">
+          <input id="removeDefault" type="checkbox" checked />
+          Удалять область NotebookLM по умолчанию
+        </label>
+        <div class="coords">
+          <div>
+            <h3>PDF (points)</h3>
+            <div class="grid">
+              <label>X <input id="pdfX" type="number" value="1268" /></label>
+              <label>Y <input id="pdfY" type="number" value="738" /></label>
+              <label>W <input id="pdfW" type="number" value="113" /></label>
+              <label>H <input id="pdfH" type="number" value="40" /></label>
+            </div>
+          </div>
+          <div>
+            <h3>PPTX ref (1376x768)</h3>
+            <div class="grid">
+              <label>X <input id="pptxX" type="number" value="1265" /></label>
+              <label>Y <input id="pptxY" type="number" value="740" /></label>
+              <label>W <input id="pptxW" type="number" value="103" /></label>
+              <label>H <input id="pptxH" type="number" value="18" /></label>
+            </div>
+          </div>
+        </div>
+        <label class="row">
+          <input id="useCustom" type="checkbox" />
+          Добавить свою область (в пикселях исходного изображения для PPTX / рендера PDF)
+        </label>
+        <div id="customBox" class="grid hidden">
+          <label>X <input id="customX" type="number" value="0" /></label>
+          <label>Y <input id="customY" type="number" value="0" /></label>
+          <label>W <input id="customW" type="number" value="0" /></label>
+          <label>H <input id="customH" type="number" value="0" /></label>
+        </div>
+      </section>
+
+      <section class="panel actions">
+        <button id="processBtn">Обработать и скачать</button>
+        <span id="status">Готово к запуску</span>
+      </section>
+
+      <section class="panel">
+        <h2>Лог</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script src="https://docs.opencv.org/4.10.0/opencv.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,152 @@
+:root {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --ink: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #22c55e;
+  --border: #334155;
+  --warn: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 20% 0%, #1d4ed8 0%, transparent 40%),
+    radial-gradient(circle at 80% 100%, #16a34a 0%, transparent 30%),
+    var(--bg);
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 34px;
+}
+
+.hero p {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+.panel {
+  background: rgba(30, 41, 59, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 14px;
+}
+
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+
+.hint {
+  color: var(--muted);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.coords {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+input[type="number"],
+input[type="file"] {
+  width: 100%;
+  padding: 9px;
+  background: #0b1224;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+button {
+  padding: 11px 16px;
+  border-radius: 9px;
+  border: 0;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  color: #04130a;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#status {
+  color: var(--warn);
+}
+
+#log {
+  margin: 0;
+  height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: #020617;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  color: #93c5fd;
+}
+
+.hidden {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .coords,
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero h1 {
+    font-size: 26px;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
