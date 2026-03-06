@@ -9,21 +9,21 @@
   <body>
     <main class="app">
       <header class="hero">
-        <h1>Watermark Remover Web</h1>
+        <h1>Presentation Cleaner</h1>
         <p>Локальная обработка PDF/PPTX в браузере (GitHub Pages)</p>
       </header>
 
       <section class="panel">
         <h2>Входные файлы</h2>
         <input id="fileInput" type="file" multiple accept=".pdf,.pptx,.PDF,.PPTX" />
-        <p class="hint">Файлы не отправляются на сервер, обработка идет в вашем браузере.</p>
+        <p class="hint">Файлы не отправляются на сервер, обработка идет только на вашем устройстве.</p>
       </section>
 
       <section class="panel options">
-        <h2>Параметры удаления</h2>
-        <label class="row">
+        <h2>Параметры NotebookLM</h2>
+        <label class="row inline">
           <input id="removeDefault" type="checkbox" checked />
-          Удалять область NotebookLM по умолчанию
+          Удалять дефолтный водяной знак NotebookLM
         </label>
         <div class="coords">
           <div>
@@ -45,15 +45,32 @@
             </div>
           </div>
         </div>
-        <label class="row">
-          <input id="useCustom" type="checkbox" />
-          Добавить свою область (в пикселях исходного изображения для PPTX / рендера PDF)
-        </label>
-        <div id="customBox" class="grid hidden">
-          <label>X <input id="customX" type="number" value="0" /></label>
-          <label>Y <input id="customY" type="number" value="0" /></label>
-          <label>W <input id="customW" type="number" value="0" /></label>
-          <label>H <input id="customH" type="number" value="0" /></label>
+      </section>
+
+      <section class="panel browser">
+        <h2>Дополнительные области (как в desktop-версии)</h2>
+        <div class="browser-top">
+          <label>
+            Файл
+            <select id="browserFileSelect"></select>
+          </label>
+          <span id="areasSummary" class="hint">Доп. области: 0</span>
+        </div>
+        <div class="browser-main">
+          <aside id="thumbs" class="thumbs"></aside>
+          <div class="preview-col">
+            <div class="preview-toolbar">
+              <button id="prevBtn" type="button">Назад</button>
+              <span id="pageIndicator">— / —</span>
+              <button id="nextBtn" type="button">Вперед</button>
+              <button id="removeLastBtn" type="button" class="secondary">Удалить последнюю</button>
+              <button id="clearPageBtn" type="button" class="secondary">Очистить страницу</button>
+            </div>
+            <div id="previewWrap" class="preview-wrap">
+              <canvas id="previewCanvas"></canvas>
+            </div>
+            <p class="hint">Выделяй область мышью на превью. Координаты сохраняются отдельно по файлу и странице/слайду.</p>
+          </div>
         </div>
       </section>
 
