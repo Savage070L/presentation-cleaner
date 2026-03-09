@@ -477,7 +477,8 @@ function updatePageIndicator() {
 }
 
 function setTool(tool) {
-  if (state.previewMode) {
+  if (state.previewMode && tool === "eraser") {
+    // For eraser user needs to see existing selections/masks.
     setPreviewMode(false);
   }
   state.currentTool = tool;
@@ -776,7 +777,7 @@ function onCanvasPointerDown(event) {
   const context = getCurrentContext();
   const page = getCurrentPage();
   if (!context || !page) return;
-  if (state.previewMode) {
+  if (state.previewMode && state.currentTool === "eraser") {
     setPreviewMode(false);
   }
 
