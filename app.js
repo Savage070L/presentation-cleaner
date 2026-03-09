@@ -556,8 +556,8 @@ function drawCurrentPage() {
     })
     .then((img) => {
       const maxWidth = Math.max(200, els.previewWrap.clientWidth);
-      // Always fit by width and keep full aspect ratio.
-      // This removes right-side empty gutters and avoids bottom cropping.
+      // Keep preview container matched to current page ratio to avoid side gaps.
+      els.previewWrap.style.aspectRatio = `${page.width} / ${page.height}`;
       const displayScale = maxWidth / page.width;
       const cw = Math.max(1, Math.round(page.width * displayScale));
       const ch = Math.max(1, Math.round(page.height * displayScale));
