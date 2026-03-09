@@ -551,30 +551,16 @@ function renderThumbs() {
       updateSummary();
     });
 
+    const num = document.createElement("span");
+    num.className = "thumb-num";
+    num.textContent = String(page.pageNum);
+
     const img = document.createElement("img");
     img.src = page.thumbUrl || page.previewUrl;
     img.alt = page.label;
 
-    const meta = document.createElement("div");
-    meta.className = "meta";
-
-    const title = document.createElement("div");
-    title.className = "title";
-    title.textContent = page.label;
-
-    const count = document.createElement("div");
-    count.className = "count";
-    const rectCount = getPageAreas(context.id, page.pageNum).length;
-    const hasBrush = canvasHasInk(getPageBrushCanvas(context.id, page, false));
-    if (!rectCount && !hasBrush) count.textContent = "Зон нет";
-    else if (rectCount && hasBrush) count.textContent = `Зон: ${rectCount} + кисть`;
-    else if (rectCount) count.textContent = `Зон: ${rectCount}`;
-    else count.textContent = "Кисть";
-
-    meta.appendChild(title);
-    meta.appendChild(count);
+    item.appendChild(num);
     item.appendChild(img);
-    item.appendChild(meta);
     els.thumbs.appendChild(item);
   });
 }

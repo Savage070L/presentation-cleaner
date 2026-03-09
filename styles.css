@@ -322,13 +322,14 @@ input[type="range"] {
 .thumb {
   border: none;
   width: 100%;
-  text-align: left;
+  text-align: center;
   margin-bottom: 8px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
   border-radius: 10px;
-  padding: 6px;
+  padding: 6px 4px;
   background: var(--card-bg);
   box-shadow: 5px 5px 12px var(--shadow-dark), -4px -4px 10px rgba(255, 255, 255, 0.65);
 }
@@ -338,21 +339,22 @@ input[type="range"] {
 }
 
 .thumb img {
-  width: 58px;
-  height: 40px;
+  width: 64px;
+  height: 44px;
   object-fit: cover;
   border-radius: 6px;
 }
 
-.thumb .title {
-  font-size: 12px;
+.thumb-num {
+  min-width: 16px;
+  font-size: 14px;
+  font-weight: 800;
   color: var(--text);
-  font-weight: 700;
+  line-height: 1;
 }
 
-.thumb .count {
-  font-size: 11px;
-  color: var(--text-muted);
+.thumb.active .thumb-num {
+  color: var(--accent);
 }
 
 .preview-col {
