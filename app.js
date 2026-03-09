@@ -14,6 +14,9 @@ const els = {
   fileInput: document.getElementById("fileInput"),
   dropText: document.getElementById("dropText"),
   fileCount: document.getElementById("fileCount"),
+  doneCount: document.getElementById("doneCount"),
+  savePath: document.getElementById("savePath"),
+  savePathBtn: document.getElementById("savePathBtn"),
   brushCursor: document.getElementById("brushCursor"),
   processBtn: document.getElementById("processBtn"),
   status: document.getElementById("status"),
@@ -56,10 +59,12 @@ const state = {
   currentPageIdx: -1,
   currentTool: "rect",
   brushSizePx: 16,
+  completedCount: 0,
   previewMode: false,
   applyingPreview: false,
   canvasHover: false,
   appliedPreview: {},
+  outputDirHandle: null,
 
   render: {
     displayScale: 1,
@@ -218,6 +223,40 @@ function downloadBytes(bytes, fileName, mimeType) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+async function saveBytes(bytes, fileName, mimeType) {
+  if (state.outputDirHandle) {
+    try {
+      const fileHandle = await state.outputDirHandle.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(new Blob([bytes], { type: mimeType }));
+      await writable.close();
+      return { savedToDir: true };
+    } catch (error) {
+      log(`⚠️ Не удалось сохранить в выбранную папку, использую обычную загрузку: ${normalizeError(error)}`);
+    }
+  }
+
+  downloadBytes(bytes, fileName, mimeType);
+  return { savedToDir: false };
+}
+
+async function chooseOutputDir() {
+  if (!window.showDirectoryPicker) {
+    log("⚠️ Ваш браузер не поддерживает выбор папки. Используются стандартные загрузки.");
+    return;
+  }
+
+  try {
+    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    state.outputDirHandle = handle;
+    els.savePath.value = `Папка: ${handle.name}`;
+    log(`📁 Папка сохранения выбрана: ${handle.name}`);
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+    log(`⚠️ Не удалось выбрать папку: ${normalizeError(error)}`);
+  }
 }
 
 function withCleanSuffix(name, newExt) {
@@ -932,12 +971,9 @@ async function downloadCurrentPage() {
     const pngBlob = await new Promise((resolve, reject) =>
       prepared.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Не удалось создать PNG blob"))), "image/png")
     );
-    const url = URL.createObjectURL(pngBlob);
-    const link = document.createElement("a");
-    link.download = `${context.file.name.replace(/\.[^.]+$/, "")}_page_${page.pageNum}_clean.png`;
-    link.href = url;
-    link.click();
-    URL.revokeObjectURL(url);
+    const fileName = `${context.file.name.replace(/\.[^.]+$/, "")}_page_${page.pageNum}_clean.png`;
+    const buf = new Uint8Array(await pngBlob.arrayBuffer());
+    await saveBytes(buf, fileName, "image/png");
     log(`⬇ Скачана страница ${page.pageNum}`);
   } catch (error) {
     log(`ОШИБКА скачивания страницы: ${normalizeError(error)}`);
@@ -1125,6 +1161,7 @@ async function loadInputFiles() {
   state.currentPageIdx = -1;
   state.previewMode = false;
   state.appliedPreview = {};
+  state.completedCount = 0;
 
   renderFileOptions();
   renderThumbs();
@@ -1132,7 +1169,8 @@ async function loadInputFiles() {
   updateSummary();
 
   els.fileCount.textContent = String(files.length);
-  els.dropText.textContent = files.length ? (files.length === 1 ? files[0].name : `${files.length} файлов выбрано`) : "Перетащите файлы сюда";
+  els.doneCount.textContent = String(state.completedCount);
+  els.dropText.textContent = files.length ? (files.length === 1 ? files[0].name : `${files.length} файлов выбрано`) : "Выберите файлы";
 
   if (!files.length) return;
 
@@ -1228,7 +1266,7 @@ async function processPdfContext(context, config) {
   }
 
   const out = await outPdf.save();
-  downloadBytes(out, withCleanSuffix(file.name, "pdf"), "application/pdf");
+  await saveBytes(out, withCleanSuffix(file.name, "pdf"), "application/pdf");
   log(`PDF: ${file.name} -> готово`);
 }
 
@@ -1303,7 +1341,7 @@ async function processPptxContext(context, config) {
   }
 
   const outPptx = await zip.generateAsync({ type: "uint8array" });
-  downloadBytes(outPptx, withCleanSuffix(file.name, "pptx"), "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+  await saveBytes(outPptx, withCleanSuffix(file.name, "pptx"), "application/vnd.openxmlformats-officedocument.presentationml.presentation");
   log(`PPTX: ${file.name} -> готово, изображений обработано: ${processed}`);
 }
 
@@ -1325,6 +1363,8 @@ async function run() {
       log(`\n[${i + 1}/${state.contexts.length}] ${context.file.name}`);
       if (context.type === "pdf") await processPdfContext(context, config);
       else if (context.type === "pptx") await processPptxContext(context, config);
+      state.completedCount += 1;
+      els.doneCount.textContent = String(state.completedCount);
     }
 
     setStatus("Готово");
@@ -1339,6 +1379,7 @@ async function run() {
 }
 
 els.fileInput.addEventListener("change", loadInputFiles);
+els.savePathBtn.addEventListener("click", chooseOutputDir);
 
 els.browserFileSelect.addEventListener("change", () => {
   const idx = Number(els.browserFileSelect.value);

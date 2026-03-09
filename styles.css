@@ -100,6 +100,13 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 24px;
+  align-items: stretch;
+}
+
+.top-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
 }
 
 .section-label {
@@ -117,6 +124,7 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 150px;
+  flex: 1;
   cursor: pointer;
   text-align: center;
   padding: 12px;
@@ -171,11 +179,56 @@ body {
 }
 
 .stat-chip-h {
-  margin-top: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 14px 20px;
+  flex: 1;
+}
+
+.stats-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.stat-h-val.done {
+  color: var(--green);
+}
+
+.save-block {
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.section-label.small {
+  margin-bottom: 8px;
+}
+
+.path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+}
+
+.path-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  padding: 8px 10px;
+  outline: none;
+}
+
+.btn-browse {
+  padding: 11px 16px;
+  color: var(--accent);
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .stat-h-val {
@@ -261,15 +314,19 @@ select {
   padding: 10px 14px;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   margin-bottom: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .tool-btn {
   padding: 9px 14px;
   font-size: 13px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .tool-btn.active-rect {
@@ -295,6 +352,10 @@ select {
 .tool-btn.download-btn {
   background: linear-gradient(135deg, #5b8dee, #3a6fd8);
   color: #fff;
+}
+
+#clearPageBtn {
+  color: var(--red);
 }
 
 .slider-wrap {
@@ -424,7 +485,8 @@ input[type="range"] {
 }
 
 .actions {
-  margin-top: 18px;
+  margin-top: 22px;
+  margin-bottom: 22px;
 }
 
 .start-btn {
@@ -436,9 +498,14 @@ input[type="range"] {
   font-family: inherit;
   font-weight: 800;
   letter-spacing: 0.6px;
-  padding: 15px;
+  padding: 18px;
+  font-size: 24px;
   cursor: pointer;
   box-shadow: 8px 8px 20px rgba(91, 141, 238, 0.4);
+}
+
+.log-section {
+  margin-top: 8px;
 }
 
 .log-box {
@@ -459,5 +526,9 @@ input[type="range"] {
   select {
     min-width: 0;
     width: 100%;
+  }
+
+  .stats-row {
+    flex-direction: column;
   }
 }

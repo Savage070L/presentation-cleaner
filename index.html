@@ -23,7 +23,7 @@
             <div class="section-label">📁 Источник файлов</div>
             <label class="file-zone-inner neu-inset" for="fileInput">
               <div class="icon">📄</div>
-              <p id="dropText">Перетащите файлы сюда</p>
+              <p id="dropText">Выберите файлы</p>
               <span>PDF и PPTX поддерживаются</span>
             </label>
             <input id="fileInput" type="file" multiple accept=".pdf,.pptx,.PDF,.PPTX" hidden />
@@ -40,9 +40,23 @@
               <div class="option-badge">PDF+PPTX</div>
             </label>
 
-            <div class="stat-chip-h neu-flat">
-              <span class="stat-h-val" id="fileCount">0</span>
-              <span class="stat-h-lbl">Файлов</span>
+            <div class="stats-row">
+              <div class="stat-chip-h neu-flat">
+                <span class="stat-h-val" id="fileCount">0</span>
+                <span class="stat-h-lbl">Файлов</span>
+              </div>
+              <div class="stat-chip-h neu-flat">
+                <span class="stat-h-val done" id="doneCount">0</span>
+                <span class="stat-h-lbl">Готово</span>
+              </div>
+            </div>
+
+            <div class="save-block">
+              <div class="section-label small">💾 Сохранить в</div>
+              <div class="path-row neu-inset">
+                <input id="savePath" class="path-input" type="text" readonly value="Загрузки браузера по умолчанию" />
+                <button id="savePathBtn" type="button" class="neu-btn btn-browse">Обзор</button>
+              </div>
             </div>
           </div>
         </div>
@@ -74,9 +88,11 @@
           <div class="tool-divider"></div>
           <button id="btnUndo" type="button" class="neu-btn tool-btn">↩ Отменить</button>
           <button id="btnRedo" type="button" class="neu-btn tool-btn">↪ Вернуть</button>
+          <div class="tool-divider"></div>
           <button id="btnApply" type="button" class="neu-btn tool-btn apply-btn">✨ Применить</button>
           <button id="btnEdit" type="button" class="neu-btn tool-btn" hidden>✏️ Редактировать</button>
           <button id="btnDownloadPage" type="button" class="neu-btn tool-btn download-btn">⬇ Скачать страницу</button>
+          <div class="tool-divider"></div>
           <button id="clearPageBtn" type="button" class="neu-btn tool-btn">🗑 Очистить страницу</button>
         </div>
 
@@ -98,7 +114,7 @@
           <button id="processBtn" class="start-btn">🚀 НАЧАТЬ ОБРАБОТКУ</button>
         </section>
 
-        <section>
+        <section class="log-section">
           <div class="section-label">📋 Журнал обработки</div>
           <pre id="log" class="log-box neu-inset"></pre>
         </section>
