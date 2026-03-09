@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="brushCursor"></div>
     <main class="wrapper">
       <header class="header">
         <div class="header-icon">🪄</div>
@@ -73,6 +74,8 @@
           <div class="tool-divider"></div>
           <button id="btnUndo" type="button" class="neu-btn tool-btn">↩ Отменить</button>
           <button id="btnRedo" type="button" class="neu-btn tool-btn">↪ Вернуть</button>
+          <button id="btnApply" type="button" class="neu-btn tool-btn apply-btn">✨ Применить</button>
+          <button id="btnEdit" type="button" class="neu-btn tool-btn" hidden>✏️ Редактировать</button>
           <button id="clearPageBtn" type="button" class="neu-btn tool-btn">🗑 Очистить страницу</button>
         </div>
 
@@ -83,7 +86,6 @@
               <button id="prevBtn" type="button" class="neu-btn page-nav">◀ Назад</button>
               <span id="pageIndicator">— / —</span>
               <button id="nextBtn" type="button" class="neu-btn page-nav">Вперед ▶</button>
-              <button id="removeLastBtn" type="button" class="neu-btn page-nav danger">Удалить последнюю</button>
             </div>
             <div id="previewWrap" class="preview-wrap neu-inset">
               <canvas id="previewCanvas"></canvas>

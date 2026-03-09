@@ -24,6 +24,17 @@ body {
   padding: 20px;
 }
 
+#brushCursor {
+  position: fixed;
+  z-index: 9999;
+  border-radius: 999px;
+  pointer-events: none;
+  display: none;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(76, 175, 130, 0.95);
+  background: rgba(76, 175, 130, 0.2);
+}
+
 .wrapper {
   width: 100%;
   max-width: 1600px;
@@ -276,6 +287,11 @@ select {
   color: #fff;
 }
 
+.tool-btn.apply-btn {
+  background: linear-gradient(135deg, #4caf82, #2d9e6b);
+  color: #fff;
+}
+
 .slider-wrap {
   display: flex;
   align-items: center;
@@ -308,7 +324,7 @@ input[type="range"] {
 
 .browser-main {
   display: grid;
-  grid-template-columns: 116px 1fr;
+  grid-template-columns: 124px 1fr;
   gap: 12px;
   align-items: start;
 }
@@ -386,16 +402,14 @@ input[type="range"] {
 }
 
 .preview-wrap {
-  padding: 10px;
-  min-height: 460px;
-  max-height: 680px;
+  padding: 4px;
+  min-height: 760px;
   overflow: auto;
 }
 
 #previewCanvas {
   display: block;
-  margin: 0 auto;
-  max-width: 100%;
+  margin: 0;
   height: auto;
   background: #fff;
   border-radius: 10px;

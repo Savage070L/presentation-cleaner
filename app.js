@@ -14,6 +14,7 @@ const els = {
   fileInput: document.getElementById("fileInput"),
   dropText: document.getElementById("dropText"),
   fileCount: document.getElementById("fileCount"),
+  brushCursor: document.getElementById("brushCursor"),
   processBtn: document.getElementById("processBtn"),
   status: document.getElementById("status"),
   log: document.getElementById("log"),
@@ -29,12 +30,13 @@ const els = {
 
   prevBtn: document.getElementById("prevBtn"),
   nextBtn: document.getElementById("nextBtn"),
-  removeLastBtn: document.getElementById("removeLastBtn"),
   clearPageBtn: document.getElementById("clearPageBtn"),
 
   btnRect: document.getElementById("btnRect"),
   btnBrush: document.getElementById("btnBrush"),
   btnEraser: document.getElementById("btnEraser"),
+  btnApply: document.getElementById("btnApply"),
+  btnEdit: document.getElementById("btnEdit"),
   brushSize: document.getElementById("brushSize"),
   brushSizeVal: document.getElementById("brushSizeVal"),
   brushSizeLabel: document.getElementById("brushSizeLabel"),
@@ -53,6 +55,10 @@ const state = {
   currentPageIdx: -1,
   currentTool: "rect",
   brushSizePx: 16,
+  previewMode: false,
+  applyingPreview: false,
+  canvasHover: false,
+  appliedPreview: {},
 
   render: {
     displayScale: 1,
@@ -305,6 +311,55 @@ function getCurrentPage() {
   return ctx.pages[state.currentPageIdx];
 }
 
+function pageKey(contextId, pageNum) {
+  return `${contextId}::${pageNum}`;
+}
+
+function getAppliedPreviewCanvas(contextId, pageNum) {
+  return state.appliedPreview[pageKey(contextId, pageNum)] || null;
+}
+
+function setAppliedPreviewCanvas(contextId, pageNum, canvas) {
+  state.appliedPreview[pageKey(contextId, pageNum)] = canvas;
+}
+
+function invalidateAppliedPreview(contextId, pageNum) {
+  delete state.appliedPreview[pageKey(contextId, pageNum)];
+  const current = getCurrentContext();
+  const page = getCurrentPage();
+  if (state.previewMode && current && page && current.id === contextId && page.pageNum === pageNum) {
+    state.previewMode = false;
+    els.btnApply.hidden = false;
+    els.btnEdit.hidden = true;
+  }
+}
+
+function setPreviewMode(enabled) {
+  state.previewMode = enabled;
+  els.btnApply.hidden = enabled;
+  els.btnEdit.hidden = !enabled;
+  drawCurrentPage();
+}
+
+function updateBrushCursorVisual() {
+  const size = Math.max(4, state.brushSizePx);
+  els.brushCursor.style.width = `${size}px`;
+  els.brushCursor.style.height = `${size}px`;
+
+  if (state.currentTool === "eraser") {
+    els.brushCursor.style.borderColor = "rgba(224, 94, 94, 0.95)";
+    els.brushCursor.style.background = "rgba(224, 94, 94, 0.2)";
+  } else {
+    els.brushCursor.style.borderColor = "rgba(76, 175, 130, 0.95)";
+    els.brushCursor.style.background = "rgba(76, 175, 130, 0.2)";
+  }
+}
+
+function updateCursorVisibility() {
+  const visible = state.canvasHover && !state.previewMode && (state.currentTool === "brush" || state.currentTool === "eraser");
+  els.brushCursor.style.display = visible ? "block" : "none";
+}
+
 function countAllAreas() {
   let total = 0;
 
@@ -361,6 +416,9 @@ function updatePageIndicator() {
 }
 
 function setTool(tool) {
+  if (state.previewMode) {
+    setPreviewMode(false);
+  }
   state.currentTool = tool;
 
   els.btnRect.classList.remove("active-rect");
@@ -380,6 +438,8 @@ function setTool(tool) {
     els.brushSizeLabel.textContent = "Размер ластика";
     els.previewCanvas.style.cursor = "none";
   }
+  updateBrushCursorVisual();
+  updateCursorVisibility();
 }
 
 function getPageSnapshot(contextId, page) {
@@ -425,6 +485,8 @@ function pushHistory(before, after) {
 function undo() {
   const action = state.historyUndo.pop();
   if (!action) return;
+  if (state.previewMode) setPreviewMode(false);
+  delete state.appliedPreview[pageKey(action.before.contextId, action.before.pageNum)];
   state.historyRedo.push(action);
   applyPageSnapshot(action.before);
   renderThumbs();
@@ -435,6 +497,8 @@ function undo() {
 function redo() {
   const action = state.historyRedo.pop();
   if (!action) return;
+  if (state.previewMode) setPreviewMode(false);
+  delete state.appliedPreview[pageKey(action.after.contextId, action.after.pageNum)];
   state.historyUndo.push(action);
   applyPageSnapshot(action.after);
   renderThumbs();
@@ -458,6 +522,10 @@ function drawCurrentPage() {
 
   Promise.resolve(page.previewCanvas || null)
     .then(async (sourceCanvas) => {
+      const applied = getAppliedPreviewCanvas(context.id, page.pageNum);
+      if (state.previewMode && applied) {
+        return applied;
+      }
       if (sourceCanvas) return sourceCanvas;
       if (page.image) return page.image;
 
@@ -473,7 +541,7 @@ function drawCurrentPage() {
     .then((img) => {
       const maxWidth = Math.max(200, els.previewWrap.clientWidth - 20);
       const maxHeight = Math.max(260, els.previewWrap.clientHeight - 20);
-      const displayScale = Math.min(maxWidth / page.width, maxHeight / page.height, 1);
+      const displayScale = Math.min(maxWidth / page.width, maxHeight / page.height);
       const cw = Math.max(1, Math.round(page.width * displayScale));
       const ch = Math.max(1, Math.round(page.height * displayScale));
 
@@ -491,43 +559,45 @@ function drawCurrentPage() {
         pageHeight: page.height
       };
 
-      const brush = getPageBrushCanvas(context.id, page, false);
-      if (brush && canvasHasInk(brush)) {
-        g.save();
-        g.globalAlpha = 0.65;
-        g.drawImage(brush, 0, 0, cw, ch);
-        g.restore();
-      }
+      if (!state.previewMode) {
+        const brush = getPageBrushCanvas(context.id, page, false);
+        if (brush && canvasHasInk(brush)) {
+          g.save();
+          g.globalAlpha = 0.65;
+          g.drawImage(brush, 0, 0, cw, ch);
+          g.restore();
+        }
 
-      const rects = getPageAreas(context.id, page.pageNum);
-      g.lineWidth = 2;
-      g.strokeStyle = "#ff6b35";
-      g.fillStyle = "rgba(255, 107, 53, 0.25)";
-      g.font = "12px Nunito, sans-serif";
-
-      rects.forEach((r, idx) => {
-        const x = r[0] * page.coordScaleX * displayScale;
-        const y = r[1] * page.coordScaleY * displayScale;
-        const w = r[2] * page.coordScaleX * displayScale;
-        const h = r[3] * page.coordScaleY * displayScale;
-        g.fillRect(x, y, w, h);
-        g.strokeRect(x, y, w, h);
-        g.fillStyle = "#ff6b35";
-        g.fillRect(x, y, 20, 16);
-        g.fillStyle = "#ffffff";
-        g.fillText(String(idx + 1), x + 6, y + 12);
+        const rects = getPageAreas(context.id, page.pageNum);
+        g.lineWidth = 2;
+        g.strokeStyle = "#ff6b35";
         g.fillStyle = "rgba(255, 107, 53, 0.25)";
-      });
+        g.font = "12px Nunito, sans-serif";
 
-      if (state.rectDraw.active && state.currentTool === "rect") {
-        const x = Math.min(state.rectDraw.startX, state.rectDraw.tempX);
-        const y = Math.min(state.rectDraw.startY, state.rectDraw.tempY);
-        const w = Math.abs(state.rectDraw.tempX - state.rectDraw.startX);
-        const h = Math.abs(state.rectDraw.tempY - state.rectDraw.startY);
-        g.strokeStyle = "#f59e0b";
-        g.setLineDash([6, 4]);
-        g.strokeRect(x, y, w, h);
-        g.setLineDash([]);
+        rects.forEach((r, idx) => {
+          const x = r[0] * page.coordScaleX * displayScale;
+          const y = r[1] * page.coordScaleY * displayScale;
+          const w = r[2] * page.coordScaleX * displayScale;
+          const h = r[3] * page.coordScaleY * displayScale;
+          g.fillRect(x, y, w, h);
+          g.strokeRect(x, y, w, h);
+          g.fillStyle = "#ff6b35";
+          g.fillRect(x, y, 20, 16);
+          g.fillStyle = "#ffffff";
+          g.fillText(String(idx + 1), x + 6, y + 12);
+          g.fillStyle = "rgba(255, 107, 53, 0.25)";
+        });
+
+        if (state.rectDraw.active && state.currentTool === "rect") {
+          const x = Math.min(state.rectDraw.startX, state.rectDraw.tempX);
+          const y = Math.min(state.rectDraw.startY, state.rectDraw.tempY);
+          const w = Math.abs(state.rectDraw.tempX - state.rectDraw.startX);
+          const h = Math.abs(state.rectDraw.tempY - state.rectDraw.startY);
+          g.strokeStyle = "#f59e0b";
+          g.setLineDash([6, 4]);
+          g.strokeRect(x, y, w, h);
+          g.setLineDash([]);
+        }
       }
 
       updatePageIndicator();
@@ -580,6 +650,7 @@ function renderFileOptions() {
 }
 
 function selectFile(index) {
+  if (state.previewMode) setPreviewMode(false);
   if (index < 0 || index >= state.contexts.length) {
     state.currentFileIdx = -1;
     state.currentPageIdx = -1;
@@ -643,6 +714,9 @@ function onCanvasPointerDown(event) {
   const context = getCurrentContext();
   const page = getCurrentPage();
   if (!context || !page) return;
+  if (state.previewMode) {
+    setPreviewMode(false);
+  }
 
   const pos = eventToCanvasPos(event);
 
@@ -656,6 +730,7 @@ function onCanvasPointerDown(event) {
     return;
   }
 
+  invalidateAppliedPreview(context.id, page.pageNum);
   const before = getPageSnapshot(context.id, page);
   state.strokeDraw.beforeSnapshot = before;
   state.strokeDraw.active = true;
@@ -717,6 +792,7 @@ function onCanvasPointerUp(event) {
       return;
     }
 
+    invalidateAppliedPreview(context.id, page.pageNum);
     const before = getPageSnapshot(context.id, page);
 
     const c1 = canvasPosToCoord({ x: x1, y: y1 }, page);
@@ -756,6 +832,7 @@ function removeLastArea() {
   const areas = getPageAreas(context.id, page.pageNum);
   if (!areas.length) return;
 
+  invalidateAppliedPreview(context.id, page.pageNum);
   const before = getPageSnapshot(context.id, page);
   areas.pop();
   const after = getPageSnapshot(context.id, page);
@@ -771,6 +848,7 @@ function clearCurrentPageAreas() {
   const page = getCurrentPage();
   if (!context || !page) return;
 
+  invalidateAppliedPreview(context.id, page.pageNum);
   const before = getPageSnapshot(context.id, page);
   getContextAreas(context.id)[page.pageNum] = [];
   const brush = getPageBrushCanvas(context.id, page, false);
@@ -782,6 +860,40 @@ function clearCurrentPageAreas() {
   renderThumbs();
   drawCurrentPage();
   updateSummary();
+}
+
+async function applyCurrentPreview() {
+  if (state.applyingPreview) return;
+  const context = getCurrentContext();
+  const page = getCurrentPage();
+  if (!context || !page) return;
+
+  try {
+    state.applyingPreview = true;
+    els.btnApply.disabled = true;
+
+    await waitForOpenCV();
+
+    const base = document.createElement("canvas");
+    base.width = page.width;
+    base.height = page.height;
+    base.getContext("2d", { willReadFrequently: true }).drawImage(page.previewCanvas || page.image, 0, 0, page.width, page.height);
+
+    const rects = getPageAreas(context.id, page.pageNum).map(([x, y, w, h]) =>
+      clampRect([x * page.coordScaleX, y * page.coordScaleY, w * page.coordScaleX, h * page.coordScaleY], page.width, page.height)
+    );
+
+    const brushMask = buildBrushMaskForTarget(context, page, page.width, page.height);
+    await inpaintCanvas(base, rects, 5, brushMask);
+
+    setAppliedPreviewCanvas(context.id, page.pageNum, base);
+    setPreviewMode(true);
+  } catch (error) {
+    log(`ОШИБКА предпросмотра: ${normalizeError(error)}`);
+  } finally {
+    state.applyingPreview = false;
+    els.btnApply.disabled = false;
+  }
 }
 
 function getImageExt(path) {
@@ -960,6 +1072,8 @@ async function loadInputFiles() {
   state.historyRedo = [];
   state.currentFileIdx = -1;
   state.currentPageIdx = -1;
+  state.previewMode = false;
+  state.appliedPreview = {};
 
   renderFileOptions();
   renderThumbs();
@@ -1183,6 +1297,7 @@ els.browserFileSelect.addEventListener("change", () => {
 els.prevBtn.addEventListener("click", () => {
   const context = getCurrentContext();
   if (!context || state.currentPageIdx <= 0) return;
+  if (state.previewMode) setPreviewMode(false);
   state.currentPageIdx -= 1;
   renderThumbs();
   drawCurrentPage();
@@ -1192,15 +1307,17 @@ els.prevBtn.addEventListener("click", () => {
 els.nextBtn.addEventListener("click", () => {
   const context = getCurrentContext();
   if (!context || state.currentPageIdx >= context.pages.length - 1) return;
+  if (state.previewMode) setPreviewMode(false);
   state.currentPageIdx += 1;
   renderThumbs();
   drawCurrentPage();
   updateSummary();
 });
 
-els.removeLastBtn.addEventListener("click", removeLastArea);
 els.clearPageBtn.addEventListener("click", clearCurrentPageAreas);
 els.processBtn.addEventListener("click", run);
+els.btnApply.addEventListener("click", applyCurrentPreview);
+els.btnEdit.addEventListener("click", () => setPreviewMode(false));
 
 els.btnRect.addEventListener("click", () => setTool("rect"));
 els.btnBrush.addEventListener("click", () => setTool("brush"));
@@ -1209,6 +1326,7 @@ els.btnEraser.addEventListener("click", () => setTool("eraser"));
 els.brushSize.addEventListener("input", () => {
   state.brushSizePx = Number(els.brushSize.value) || 16;
   els.brushSizeVal.textContent = `${state.brushSizePx}px`;
+  updateBrushCursorVisual();
 });
 
 els.btnUndo.addEventListener("click", undo);
@@ -1217,9 +1335,22 @@ els.btnRedo.addEventListener("click", redo);
 els.previewCanvas.addEventListener("pointerdown", onCanvasPointerDown);
 els.previewCanvas.addEventListener("pointermove", onCanvasPointerMove);
 window.addEventListener("pointerup", onCanvasPointerUp);
+els.previewCanvas.addEventListener("pointerenter", () => {
+  state.canvasHover = true;
+  updateCursorVisibility();
+});
+els.previewCanvas.addEventListener("pointerleave", () => {
+  state.canvasHover = false;
+  updateCursorVisibility();
+});
+els.previewCanvas.addEventListener("pointermove", (event) => {
+  els.brushCursor.style.left = `${event.clientX}px`;
+  els.brushCursor.style.top = `${event.clientY}px`;
+});
 
 window.addEventListener("resize", drawCurrentPage);
 
 setTool("rect");
+updateBrushCursorVisual();
 updateSummary();
 els.log.textContent = "Watermark Remover готов. Выберите файлы для обработки.\n";
