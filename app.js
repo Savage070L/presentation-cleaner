@@ -255,6 +255,12 @@ async function chooseOutputDir() {
     log(`📁 Папка сохранения выбрана: ${handle.name}`);
   } catch (error) {
     if (error?.name === "AbortError") return;
+    if (error?.name === "SecurityError" || error?.name === "NotAllowedError") {
+      state.outputDirHandle = null;
+      els.savePath.value = "По умолчанию стоит загрузки";
+      log("⚠️ Эту папку выбрать нельзя (системная/защищенная). Выберите обычную папку, например Downloads/processed.");
+      return;
+    }
     log(`⚠️ Не удалось выбрать папку: ${normalizeError(error)}`);
   }
 }
