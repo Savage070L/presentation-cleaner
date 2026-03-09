@@ -12,27 +12,48 @@ const DEFAULT_PPTX_RECT_REF = [1265, 740, 103, 18];
 
 const els = {
   fileInput: document.getElementById("fileInput"),
+  dropText: document.getElementById("dropText"),
+  fileCount: document.getElementById("fileCount"),
   processBtn: document.getElementById("processBtn"),
   status: document.getElementById("status"),
   log: document.getElementById("log"),
   removeDefault: document.getElementById("removeDefault"),
+
   browserFileSelect: document.getElementById("browserFileSelect"),
   thumbs: document.getElementById("thumbs"),
   previewCanvas: document.getElementById("previewCanvas"),
   previewWrap: document.getElementById("previewWrap"),
   areasSummary: document.getElementById("areasSummary"),
+  areaChips: document.getElementById("areaChips"),
   pageIndicator: document.getElementById("pageIndicator"),
+
   prevBtn: document.getElementById("prevBtn"),
   nextBtn: document.getElementById("nextBtn"),
   removeLastBtn: document.getElementById("removeLastBtn"),
-  clearPageBtn: document.getElementById("clearPageBtn")
+  clearPageBtn: document.getElementById("clearPageBtn"),
+
+  btnRect: document.getElementById("btnRect"),
+  btnBrush: document.getElementById("btnBrush"),
+  btnEraser: document.getElementById("btnEraser"),
+  brushSize: document.getElementById("brushSize"),
+  brushSizeVal: document.getElementById("brushSizeVal"),
+  brushSizeLabel: document.getElementById("brushSizeLabel"),
+  btnUndo: document.getElementById("btnUndo"),
+  btnRedo: document.getElementById("btnRedo")
 };
 
 const state = {
   contexts: [],
   customAreas: {},
+  brushMasks: {},
+  historyUndo: [],
+  historyRedo: [],
+
   currentFileIdx: -1,
   currentPageIdx: -1,
+  currentTool: "rect",
+  brushSizePx: 16,
+
   render: {
     displayScale: 1,
     coordScaleX: 1,
@@ -40,12 +61,20 @@ const state = {
     pageWidth: 1,
     pageHeight: 1
   },
-  draw: {
+
+  rectDraw: {
     active: false,
     startX: 0,
     startY: 0,
     tempX: 0,
     tempY: 0
+  },
+
+  strokeDraw: {
+    active: false,
+    lastCoordX: 0,
+    lastCoordY: 0,
+    beforeSnapshot: null
   }
 };
 
@@ -108,9 +137,7 @@ function clampRect([x, y, w, h], width, height) {
 function drawRectsMask(mask, rects) {
   rects.forEach(([x, y, w, h]) => {
     if (w <= 0 || h <= 0) return;
-    const p1 = new cv.Point(x, y);
-    const p2 = new cv.Point(x + w, y + h);
-    cv.rectangle(mask, p1, p2, new cv.Scalar(255, 255, 255, 255), -1);
+    cv.rectangle(mask, new cv.Point(x, y), new cv.Point(x + w, y + h), new cv.Scalar(255), -1);
   });
 }
 
@@ -119,28 +146,55 @@ async function blobToCanvas(blob) {
   const canvas = document.createElement("canvas");
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(bitmap, 0, 0);
+  canvas.getContext("2d", { willReadFrequently: true }).drawImage(bitmap, 0, 0);
   bitmap.close();
   return canvas;
 }
 
-async function inpaintCanvas(canvas, rects, radius = 5) {
-  if (!rects.length) return canvas;
+function canvasHasInk(canvas) {
+  if (!canvas) return false;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] > 2) return true;
+  }
+  return false;
+}
+
+async function inpaintCanvas(canvas, rects, radius = 5, brushMaskCanvas = null) {
+  if (!rects.length && !brushMaskCanvas) return canvas;
 
   const srcRgba = cv.imread(canvas);
   const src = new cv.Mat();
   cv.cvtColor(srcRgba, src, cv.COLOR_RGBA2RGB);
+
   const mask = new cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC1);
+
+  let brushRgba = null;
+  let brushGray = null;
+  let brushBin = null;
 
   try {
     drawRectsMask(mask, rects);
+
+    if (brushMaskCanvas && canvasHasInk(brushMaskCanvas)) {
+      brushRgba = cv.imread(brushMaskCanvas);
+      brushGray = new cv.Mat();
+      brushBin = new cv.Mat();
+      cv.cvtColor(brushRgba, brushGray, cv.COLOR_RGBA2GRAY);
+      cv.threshold(brushGray, brushBin, 1, 255, cv.THRESH_BINARY);
+      cv.bitwise_or(mask, brushBin, mask);
+    }
+
     const dst = new cv.Mat();
     cv.inpaint(src, mask, dst, radius, cv.INPAINT_NS);
     cv.imshow(canvas, dst);
     dst.delete();
     return canvas;
   } finally {
+    if (brushRgba) brushRgba.delete();
+    if (brushGray) brushGray.delete();
+    if (brushBin) brushBin.delete();
     srcRgba.delete();
     src.delete();
     mask.delete();
@@ -186,11 +240,8 @@ function normalizeZipPath(path) {
   const out = [];
   for (const p of parts) {
     if (!p || p === ".") continue;
-    if (p === "..") {
-      out.pop();
-      continue;
-    }
-    out.push(p);
+    if (p === "..") out.pop();
+    else out.push(p);
   }
   return out.join("/");
 }
@@ -201,19 +252,45 @@ function resolveTargetPath(basePath, target) {
   return normalizeZipPath(`${baseParts.join("/")}/${target}`);
 }
 
+function uniqueStrings(values) {
+  return [...new Set(values)];
+}
+
+function normalizeRects(rects) {
+  const uniq = new Map();
+  rects.forEach((r) => {
+    const k = r.join(",");
+    if (!uniq.has(k)) uniq.set(k, r);
+  });
+  return [...uniq.values()];
+}
+
 function getContextAreas(contextId) {
-  if (!state.customAreas[contextId]) {
-    state.customAreas[contextId] = {};
-  }
+  if (!state.customAreas[contextId]) state.customAreas[contextId] = {};
   return state.customAreas[contextId];
 }
 
 function getPageAreas(contextId, pageNum) {
   const fileAreas = getContextAreas(contextId);
-  if (!fileAreas[pageNum]) {
-    fileAreas[pageNum] = [];
-  }
+  if (!fileAreas[pageNum]) fileAreas[pageNum] = [];
   return fileAreas[pageNum];
+}
+
+function getContextBrushes(contextId) {
+  if (!state.brushMasks[contextId]) state.brushMasks[contextId] = {};
+  return state.brushMasks[contextId];
+}
+
+function getPageBrushCanvas(contextId, page, create = false) {
+  const brushes = getContextBrushes(contextId);
+  if (brushes[page.pageNum]) return brushes[page.pageNum];
+  if (!create) return null;
+
+  const c = document.createElement("canvas");
+  c.width = page.coordWidth;
+  c.height = page.coordHeight;
+  brushes[page.pageNum] = c;
+  return c;
 }
 
 function getCurrentContext() {
@@ -230,34 +307,148 @@ function getCurrentPage() {
 
 function countAllAreas() {
   let total = 0;
+
   for (const areasByPage of Object.values(state.customAreas)) {
-    for (const rects of Object.values(areasByPage)) {
-      total += rects.length;
-    }
+    for (const rects of Object.values(areasByPage)) total += rects.length;
   }
+  for (const brushByPage of Object.values(state.brushMasks)) {
+    for (const c of Object.values(brushByPage)) if (canvasHasInk(c)) total += 1;
+  }
+
   return total;
 }
 
 function updateSummary() {
-  els.areasSummary.textContent = `Доп. области: ${countAllAreas()}`;
+  const total = countAllAreas();
+  els.areasSummary.textContent = `Доп. области: ${total}`;
+  els.areaChips.innerHTML = "";
+  if (!total) {
+    els.areaChips.innerHTML = '<span class="no-areas">Доп. область не задана</span>';
+    return;
+  }
+
+  const ctx = getCurrentContext();
+  if (!ctx) return;
+
+  ctx.pages.forEach((page) => {
+    const rectCount = getPageAreas(ctx.id, page.pageNum).length;
+    const brush = getPageBrushCanvas(ctx.id, page, false);
+    const hasBrush = canvasHasInk(brush);
+    if (!rectCount && !hasBrush) return;
+
+    if (rectCount) {
+      const chip = document.createElement("span");
+      chip.className = "area-chip";
+      chip.textContent = `⬜ ${page.label}: ${rectCount}`;
+      els.areaChips.appendChild(chip);
+    }
+    if (hasBrush) {
+      const chip = document.createElement("span");
+      chip.className = "area-chip";
+      chip.textContent = `🖌 ${page.label}`;
+      els.areaChips.appendChild(chip);
+    }
+  });
 }
 
 function updatePageIndicator() {
   const ctx = getCurrentContext();
-  if (!ctx || !ctx.pages.length || state.currentPageIdx < 0) {
+  if (!ctx || state.currentPageIdx < 0) {
     els.pageIndicator.textContent = "— / —";
     return;
   }
   els.pageIndicator.textContent = `${state.currentPageIdx + 1} / ${ctx.pages.length}`;
 }
 
+function setTool(tool) {
+  state.currentTool = tool;
+
+  els.btnRect.classList.remove("active-rect");
+  els.btnBrush.classList.remove("active-brush");
+  els.btnEraser.classList.remove("active-eraser");
+
+  if (tool === "rect") {
+    els.btnRect.classList.add("active-rect");
+    els.brushSizeLabel.textContent = "Размер кисти";
+    els.previewCanvas.style.cursor = "crosshair";
+  } else if (tool === "brush") {
+    els.btnBrush.classList.add("active-brush");
+    els.brushSizeLabel.textContent = "Размер кисти";
+    els.previewCanvas.style.cursor = "none";
+  } else {
+    els.btnEraser.classList.add("active-eraser");
+    els.brushSizeLabel.textContent = "Размер ластика";
+    els.previewCanvas.style.cursor = "none";
+  }
+}
+
+function getPageSnapshot(contextId, page) {
+  const rects = getPageAreas(contextId, page.pageNum).map((r) => [...r]);
+  const brush = getPageBrushCanvas(contextId, page, false);
+  const brushData = brush && canvasHasInk(brush) ? brush.toDataURL("image/png") : null;
+  return { contextId, pageNum: page.pageNum, rects, brushData };
+}
+
+function applyPageSnapshot(snapshot) {
+  const context = state.contexts.find((c) => c.id === snapshot.contextId);
+  if (!context) return;
+  const page = context.pages.find((p) => p.pageNum === snapshot.pageNum);
+  if (!page) return;
+
+  getContextAreas(context.id)[page.pageNum] = snapshot.rects.map((r) => [...r]);
+
+  if (snapshot.brushData) {
+    const c = getPageBrushCanvas(context.id, page, true);
+    const g = c.getContext("2d");
+    g.clearRect(0, 0, c.width, c.height);
+    const img = new Image();
+    img.onload = () => {
+      g.drawImage(img, 0, 0, c.width, c.height);
+      if (getCurrentContext()?.id === context.id && getCurrentPage()?.pageNum === page.pageNum) {
+        renderThumbs();
+        drawCurrentPage();
+        updateSummary();
+      }
+    };
+    img.src = snapshot.brushData;
+  } else {
+    const c = getPageBrushCanvas(context.id, page, false);
+    if (c) c.getContext("2d").clearRect(0, 0, c.width, c.height);
+  }
+}
+
+function pushHistory(before, after) {
+  state.historyUndo.push({ before, after });
+  state.historyRedo = [];
+}
+
+function undo() {
+  const action = state.historyUndo.pop();
+  if (!action) return;
+  state.historyRedo.push(action);
+  applyPageSnapshot(action.before);
+  renderThumbs();
+  drawCurrentPage();
+  updateSummary();
+}
+
+function redo() {
+  const action = state.historyRedo.pop();
+  if (!action) return;
+  state.historyUndo.push(action);
+  applyPageSnapshot(action.after);
+  renderThumbs();
+  drawCurrentPage();
+  updateSummary();
+}
+
 function drawCurrentPage() {
   const page = getCurrentPage();
-  const ctx = getCurrentContext();
+  const context = getCurrentContext();
   const canvas = els.previewCanvas;
   const g = canvas.getContext("2d");
 
-  if (!page || !ctx) {
+  if (!page || !context) {
     canvas.width = 1;
     canvas.height = 1;
     g.clearRect(0, 0, 1, 1);
@@ -267,12 +458,9 @@ function drawCurrentPage() {
 
   Promise.resolve(page.previewCanvas || null)
     .then(async (sourceCanvas) => {
-      if (sourceCanvas) {
-        return sourceCanvas;
-      }
-      if (page.image) {
-        return page.image;
-      }
+      if (sourceCanvas) return sourceCanvas;
+      if (page.image) return page.image;
+
       const img = new Image();
       await new Promise((resolve, reject) => {
         img.onload = resolve;
@@ -291,6 +479,7 @@ function drawCurrentPage() {
 
       canvas.width = cw;
       canvas.height = ch;
+
       g.clearRect(0, 0, cw, ch);
       g.drawImage(img, 0, 0, cw, ch);
 
@@ -302,11 +491,19 @@ function drawCurrentPage() {
         pageHeight: page.height
       };
 
-      const rects = getPageAreas(ctx.id, page.pageNum);
+      const brush = getPageBrushCanvas(context.id, page, false);
+      if (brush && canvasHasInk(brush)) {
+        g.save();
+        g.globalAlpha = 0.65;
+        g.drawImage(brush, 0, 0, cw, ch);
+        g.restore();
+      }
+
+      const rects = getPageAreas(context.id, page.pageNum);
       g.lineWidth = 2;
       g.strokeStyle = "#ff6b35";
       g.fillStyle = "rgba(255, 107, 53, 0.25)";
-      g.font = "12px Avenir Next, Segoe UI, sans-serif";
+      g.font = "12px Nunito, sans-serif";
 
       rects.forEach((r, idx) => {
         const x = r[0] * page.coordScaleX * displayScale;
@@ -322,11 +519,11 @@ function drawCurrentPage() {
         g.fillStyle = "rgba(255, 107, 53, 0.25)";
       });
 
-      if (state.draw.active) {
-        const x = Math.min(state.draw.startX, state.draw.tempX);
-        const y = Math.min(state.draw.startY, state.draw.tempY);
-        const w = Math.abs(state.draw.tempX - state.draw.startX);
-        const h = Math.abs(state.draw.tempY - state.draw.startY);
+      if (state.rectDraw.active && state.currentTool === "rect") {
+        const x = Math.min(state.rectDraw.startX, state.rectDraw.tempX);
+        const y = Math.min(state.rectDraw.startY, state.rectDraw.tempY);
+        const w = Math.abs(state.rectDraw.tempX - state.rectDraw.startX);
+        const h = Math.abs(state.rectDraw.tempY - state.rectDraw.startY);
         g.strokeStyle = "#f59e0b";
         g.setLineDash([6, 4]);
         g.strokeRect(x, y, w, h);
@@ -335,17 +532,15 @@ function drawCurrentPage() {
 
       updatePageIndicator();
     })
-    .catch((error) => {
-      log(`Ошибка отрисовки превью: ${normalizeError(error)}`);
-    });
+    .catch((error) => log(`Ошибка отрисовки превью: ${normalizeError(error)}`));
 }
 
 function renderThumbs() {
-  const ctx = getCurrentContext();
+  const context = getCurrentContext();
   els.thumbs.innerHTML = "";
-  if (!ctx) return;
+  if (!context) return;
 
-  ctx.pages.forEach((page, index) => {
+  context.pages.forEach((page, index) => {
     const item = document.createElement("button");
     item.type = "button";
     item.className = `thumb ${index === state.currentPageIdx ? "active" : ""}`;
@@ -353,6 +548,7 @@ function renderThumbs() {
       state.currentPageIdx = index;
       renderThumbs();
       drawCurrentPage();
+      updateSummary();
     });
 
     const img = document.createElement("img");
@@ -368,8 +564,12 @@ function renderThumbs() {
 
     const count = document.createElement("div");
     count.className = "count";
-    const areaCount = getPageAreas(ctx.id, page.pageNum).length;
-    count.textContent = areaCount > 0 ? `Зон: ${areaCount}` : "Зон нет";
+    const rectCount = getPageAreas(context.id, page.pageNum).length;
+    const hasBrush = canvasHasInk(getPageBrushCanvas(context.id, page, false));
+    if (!rectCount && !hasBrush) count.textContent = "Зон нет";
+    else if (rectCount && hasBrush) count.textContent = `Зон: ${rectCount} + кисть`;
+    else if (rectCount) count.textContent = `Зон: ${rectCount}`;
+    else count.textContent = "Кисть";
 
     meta.appendChild(title);
     meta.appendChild(count);
@@ -381,10 +581,10 @@ function renderThumbs() {
 
 function renderFileOptions() {
   els.browserFileSelect.innerHTML = "";
-  state.contexts.forEach((ctx, index) => {
+  state.contexts.forEach((context, index) => {
     const option = document.createElement("option");
     option.value = String(index);
-    option.textContent = `${ctx.file.name} (${ctx.type.toUpperCase()}, ${ctx.pages.length})`;
+    option.textContent = `${context.file.name} (${context.type.toUpperCase()}, ${context.pages.length})`;
     els.browserFileSelect.appendChild(option);
   });
 
@@ -399,123 +599,203 @@ function selectFile(index) {
     state.currentPageIdx = -1;
     renderThumbs();
     drawCurrentPage();
+    updateSummary();
     return;
   }
 
   state.currentFileIdx = index;
-  const ctx = state.contexts[index];
-  state.currentPageIdx = ctx.pages.length ? 0 : -1;
+  state.currentPageIdx = state.contexts[index].pages.length ? 0 : -1;
   renderFileOptions();
   renderThumbs();
   drawCurrentPage();
   updateSummary();
 }
 
-function onCanvasPointerDown(event) {
-  const page = getCurrentPage();
-  if (!page) return;
-
+function eventToCanvasPos(event) {
   const rect = els.previewCanvas.getBoundingClientRect();
-  const x = event.clientX - rect.left;
-  const y = event.clientY - rect.top;
-  state.draw.active = true;
-  state.draw.startX = x;
-  state.draw.startY = y;
-  state.draw.tempX = x;
-  state.draw.tempY = y;
+  return {
+    x: Math.max(0, Math.min(els.previewCanvas.width, event.clientX - rect.left)),
+    y: Math.max(0, Math.min(els.previewCanvas.height, event.clientY - rect.top))
+  };
+}
+
+function canvasPosToCoord(pos, page) {
+  const imageX = pos.x / state.render.displayScale;
+  const imageY = pos.y / state.render.displayScale;
+  return {
+    x: Math.max(0, Math.min(page.coordWidth, imageX / page.coordScaleX)),
+    y: Math.max(0, Math.min(page.coordHeight, imageY / page.coordScaleY))
+  };
+}
+
+function drawBrushStroke(maskCanvas, fromCoord, toCoord, tool, page) {
+  const g = maskCanvas.getContext("2d");
+  const avgScale = state.render.displayScale * ((page.coordScaleX + page.coordScaleY) / 2);
+  const lineW = Math.max(1, state.brushSizePx / Math.max(avgScale, 0.001));
+
+  g.save();
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  g.lineWidth = lineW;
+
+  if (tool === "brush") {
+    g.globalCompositeOperation = "source-over";
+    g.strokeStyle = "rgba(240, 123, 63, 0.9)";
+  } else {
+    g.globalCompositeOperation = "destination-out";
+    g.strokeStyle = "rgba(0,0,0,1)";
+  }
+
+  g.beginPath();
+  g.moveTo(fromCoord.x, fromCoord.y);
+  g.lineTo(toCoord.x, toCoord.y);
+  g.stroke();
+  g.restore();
+}
+
+function onCanvasPointerDown(event) {
+  const context = getCurrentContext();
+  const page = getCurrentPage();
+  if (!context || !page) return;
+
+  const pos = eventToCanvasPos(event);
+
+  if (state.currentTool === "rect") {
+    state.rectDraw.active = true;
+    state.rectDraw.startX = pos.x;
+    state.rectDraw.startY = pos.y;
+    state.rectDraw.tempX = pos.x;
+    state.rectDraw.tempY = pos.y;
+    drawCurrentPage();
+    return;
+  }
+
+  const before = getPageSnapshot(context.id, page);
+  state.strokeDraw.beforeSnapshot = before;
+  state.strokeDraw.active = true;
+
+  const coord = canvasPosToCoord(pos, page);
+  state.strokeDraw.lastCoordX = coord.x;
+  state.strokeDraw.lastCoordY = coord.y;
+
+  const maskCanvas = getPageBrushCanvas(context.id, page, true);
+  drawBrushStroke(maskCanvas, coord, coord, state.currentTool, page);
   drawCurrentPage();
 }
 
 function onCanvasPointerMove(event) {
-  if (!state.draw.active) return;
-  const rect = els.previewCanvas.getBoundingClientRect();
-  state.draw.tempX = event.clientX - rect.left;
-  state.draw.tempY = event.clientY - rect.top;
+  const context = getCurrentContext();
+  const page = getCurrentPage();
+  if (!context || !page) return;
+
+  if (state.currentTool === "rect") {
+    if (!state.rectDraw.active) return;
+    const pos = eventToCanvasPos(event);
+    state.rectDraw.tempX = pos.x;
+    state.rectDraw.tempY = pos.y;
+    drawCurrentPage();
+    return;
+  }
+
+  if (!state.strokeDraw.active) return;
+  const pos = eventToCanvasPos(event);
+  const coord = canvasPosToCoord(pos, page);
+  const maskCanvas = getPageBrushCanvas(context.id, page, true);
+
+  drawBrushStroke(maskCanvas, { x: state.strokeDraw.lastCoordX, y: state.strokeDraw.lastCoordY }, coord, state.currentTool, page);
+
+  state.strokeDraw.lastCoordX = coord.x;
+  state.strokeDraw.lastCoordY = coord.y;
   drawCurrentPage();
 }
 
 function onCanvasPointerUp(event) {
-  if (!state.draw.active) return;
-  state.draw.active = false;
-
-  const ctx = getCurrentContext();
+  const context = getCurrentContext();
   const page = getCurrentPage();
-  if (!ctx || !page) {
+  if (!context || !page) return;
+
+  if (state.currentTool === "rect") {
+    if (!state.rectDraw.active) return;
+    state.rectDraw.active = false;
+
+    const pos = eventToCanvasPos(event);
+    const x1 = Math.max(0, Math.min(state.rectDraw.startX, pos.x));
+    const y1 = Math.max(0, Math.min(state.rectDraw.startY, pos.y));
+    const x2 = Math.min(els.previewCanvas.width, Math.max(state.rectDraw.startX, pos.x));
+    const y2 = Math.min(els.previewCanvas.height, Math.max(state.rectDraw.startY, pos.y));
+
+    const w = x2 - x1;
+    const h = y2 - y1;
+    if (w < 5 || h < 5) {
+      drawCurrentPage();
+      return;
+    }
+
+    const before = getPageSnapshot(context.id, page);
+
+    const c1 = canvasPosToCoord({ x: x1, y: y1 }, page);
+    const c2 = canvasPosToCoord({ x: x2, y: y2 }, page);
+
+    const coordRect = [Math.round(c1.x), Math.round(c1.y), Math.max(1, Math.round(c2.x - c1.x)), Math.max(1, Math.round(c2.y - c1.y))];
+    getPageAreas(context.id, page.pageNum).push(coordRect);
+
+    const after = getPageSnapshot(context.id, page);
+    pushHistory(before, after);
+
+    renderThumbs();
     drawCurrentPage();
+    updateSummary();
     return;
   }
 
-  const rect = els.previewCanvas.getBoundingClientRect();
-  const endX = event.clientX - rect.left;
-  const endY = event.clientY - rect.top;
+  if (!state.strokeDraw.active) return;
+  state.strokeDraw.active = false;
 
-  const x1 = Math.max(0, Math.min(state.draw.startX, endX));
-  const y1 = Math.max(0, Math.min(state.draw.startY, endY));
-  const x2 = Math.min(els.previewCanvas.width, Math.max(state.draw.startX, endX));
-  const y2 = Math.min(els.previewCanvas.height, Math.max(state.draw.startY, endY));
-
-  const w = x2 - x1;
-  const h = y2 - y1;
-  if (w < 5 || h < 5) {
-    drawCurrentPage();
-    return;
+  const before = state.strokeDraw.beforeSnapshot;
+  const after = getPageSnapshot(context.id, page);
+  if (before && JSON.stringify(before) !== JSON.stringify(after)) {
+    pushHistory(before, after);
   }
 
-  const imageX = x1 / state.render.displayScale;
-  const imageY = y1 / state.render.displayScale;
-  const imageW = w / state.render.displayScale;
-  const imageH = h / state.render.displayScale;
-
-  const coordX = Math.round(imageX / page.coordScaleX);
-  const coordY = Math.round(imageY / page.coordScaleY);
-  const coordW = Math.round(imageW / page.coordScaleX);
-  const coordH = Math.round(imageH / page.coordScaleY);
-
-  if (coordW < 3 || coordH < 3) {
-    drawCurrentPage();
-    return;
-  }
-
-  const areas = getPageAreas(ctx.id, page.pageNum);
-  areas.push([coordX, coordY, coordW, coordH]);
+  state.strokeDraw.beforeSnapshot = null;
   renderThumbs();
   drawCurrentPage();
   updateSummary();
 }
 
 function removeLastArea() {
-  const ctx = getCurrentContext();
+  const context = getCurrentContext();
   const page = getCurrentPage();
-  if (!ctx || !page) return;
-  const areas = getPageAreas(ctx.id, page.pageNum);
+  if (!context || !page) return;
+  const areas = getPageAreas(context.id, page.pageNum);
   if (!areas.length) return;
+
+  const before = getPageSnapshot(context.id, page);
   areas.pop();
+  const after = getPageSnapshot(context.id, page);
+  pushHistory(before, after);
+
   renderThumbs();
   drawCurrentPage();
   updateSummary();
 }
 
 function clearCurrentPageAreas() {
-  const ctx = getCurrentContext();
+  const context = getCurrentContext();
   const page = getCurrentPage();
-  if (!ctx || !page) return;
-  getContextAreas(ctx.id)[page.pageNum] = [];
+  if (!context || !page) return;
+
+  const before = getPageSnapshot(context.id, page);
+  getContextAreas(context.id)[page.pageNum] = [];
+  const brush = getPageBrushCanvas(context.id, page, false);
+  if (brush) brush.getContext("2d").clearRect(0, 0, brush.width, brush.height);
+
+  const after = getPageSnapshot(context.id, page);
+  pushHistory(before, after);
+
   renderThumbs();
   drawCurrentPage();
   updateSummary();
-}
-
-function normalizeRects(rects) {
-  const uniq = new Map();
-  rects.forEach((r) => {
-    const key = r.join(",");
-    if (!uniq.has(key)) uniq.set(key, r);
-  });
-  return [...uniq.values()];
-}
-
-function uniqueStrings(values) {
-  return [...new Set(values)];
 }
 
 function getImageExt(path) {
@@ -524,8 +804,7 @@ function getImageExt(path) {
 }
 
 function isProcessableImage(path) {
-  const ext = getImageExt(path);
-  return ["png", "jpg", "jpeg", "bmp", "webp"].includes(ext);
+  return ["png", "jpg", "jpeg", "bmp", "webp"].includes(getImageExt(path));
 }
 
 async function buildPdfContext(file, id) {
@@ -537,11 +816,15 @@ async function buildPdfContext(file, id) {
     const page = await src.getPage(i);
     const previewScale = 0.8;
     const viewport = page.getViewport({ scale: previewScale });
+
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(viewport.width));
     canvas.height = Math.max(1, Math.round(viewport.height));
     const g = canvas.getContext("2d", { willReadFrequently: true });
     await page.render({ canvasContext: g, viewport }).promise;
+
+    const coordWidth = Math.max(1, Math.round(canvas.width / previewScale));
+    const coordHeight = Math.max(1, Math.round(canvas.height / previewScale));
 
     pages.push({
       pageNum: i,
@@ -553,29 +836,29 @@ async function buildPdfContext(file, id) {
       height: canvas.height,
       coordScaleX: previewScale,
       coordScaleY: previewScale,
+      coordWidth,
+      coordHeight,
       mediaTargets: []
     });
   }
 
-  return {
-    id,
-    file,
-    type: "pdf",
-    pages
-  };
+  return { id, file, type: "pdf", pages };
 }
 
 function extractImageRelationships(relsXmlText) {
   const relDoc = parseXml(relsXmlText);
   const rels = relDoc.getElementsByTagName("Relationship");
   const out = {};
+
   for (const rel of rels) {
     const type = rel.getAttribute("Type") || "";
     if (!type.includes("/image")) continue;
+
     const id = rel.getAttribute("Id");
     const target = rel.getAttribute("Target");
     if (id && target) out[id] = target;
   }
+
   return out;
 }
 
@@ -588,25 +871,23 @@ function extractBlipEmbeds(slideXmlText) {
     const raw = blip.getAttribute("r:embed") || blip.getAttribute("embed");
     if (raw) out.push(raw);
   }
+
   return out;
 }
 
-function buildPlaceholderDataUrl(label) {
+function buildPlaceholderCanvas(label) {
   const canvas = document.createElement("canvas");
   canvas.width = 960;
   canvas.height = 540;
   const g = canvas.getContext("2d");
-  g.fillStyle = "#111827";
+  g.fillStyle = "#f0f3f8";
   g.fillRect(0, 0, canvas.width, canvas.height);
-  g.strokeStyle = "#334155";
-  g.lineWidth = 2;
-  g.strokeRect(16, 16, canvas.width - 32, canvas.height - 32);
-  g.fillStyle = "#94a3b8";
-  g.font = "bold 24px Avenir Next, Segoe UI, sans-serif";
-  g.fillText(label, 30, 50);
-  g.font = "16px Avenir Next, Segoe UI, sans-serif";
-  g.fillText("Не найдено растровое изображение для превью", 30, 82);
-  return canvas.toDataURL("image/png");
+  g.fillStyle = "#9aa8ba";
+  g.font = "bold 24px Nunito, sans-serif";
+  g.fillText(label, 32, 48);
+  g.font = "16px Nunito, sans-serif";
+  g.fillText("Для этого слайда превью недоступно", 32, 80);
+  return canvas;
 }
 
 async function buildPptxContext(file, id) {
@@ -634,24 +915,26 @@ async function buildPptxContext(file, id) {
         .map((target) => resolveTargetPath(slidePath, target))
     );
 
+    let previewCanvas = null;
     let previewUrl = "";
     let thumbUrl = "";
     let width = REF_PPTX_WIDTH;
     let height = REF_PPTX_HEIGHT;
-    let previewCanvas = null;
 
     const previewMedia = mediaTargets.find((path) => isProcessableImage(path) && zip.file(path));
     if (previewMedia) {
       const imageBytes = await zip.file(previewMedia).async("uint8array");
-      const canvas = await blobToCanvas(new Blob([imageBytes]));
-      previewCanvas = canvas;
-      width = canvas.width;
-      height = canvas.height;
-      previewUrl = canvas.toDataURL("image/jpeg", 0.85);
-      thumbUrl = canvas.toDataURL("image/jpeg", 0.6);
+      previewCanvas = await blobToCanvas(new Blob([imageBytes]));
+      width = previewCanvas.width;
+      height = previewCanvas.height;
+      previewUrl = previewCanvas.toDataURL("image/jpeg", 0.85);
+      thumbUrl = previewCanvas.toDataURL("image/jpeg", 0.6);
     } else {
-      previewUrl = buildPlaceholderDataUrl(`Слайд ${i + 1}`);
-      thumbUrl = previewUrl;
+      previewCanvas = buildPlaceholderCanvas(`Слайд ${i + 1}`);
+      width = previewCanvas.width;
+      height = previewCanvas.height;
+      previewUrl = previewCanvas.toDataURL("image/jpeg", 0.85);
+      thumbUrl = previewCanvas.toDataURL("image/jpeg", 0.6);
     }
 
     pages.push({
@@ -664,28 +947,21 @@ async function buildPptxContext(file, id) {
       height,
       coordScaleX: width / REF_PPTX_WIDTH,
       coordScaleY: height / REF_PPTX_HEIGHT,
+      coordWidth: REF_PPTX_WIDTH,
+      coordHeight: REF_PPTX_HEIGHT,
       mediaTargets
     });
   }
 
-  return {
-    id,
-    file,
-    type: "pptx",
-    pages
-  };
+  return { id, file, type: "pptx", pages };
 }
 
 async function buildContext(file, index) {
   const ext = fileExt(file.name);
   const id = `${file.name}::${file.size}::${file.lastModified}::${index}`;
 
-  if (ext === "pdf") {
-    return buildPdfContext(file, id);
-  }
-  if (ext === "pptx") {
-    return buildPptxContext(file, id);
-  }
+  if (ext === "pdf") return buildPdfContext(file, id);
+  if (ext === "pptx") return buildPptxContext(file, id);
   return null;
 }
 
@@ -693,41 +969,43 @@ async function loadInputFiles() {
   const files = [...els.fileInput.files];
   state.contexts = [];
   state.customAreas = {};
+  state.brushMasks = {};
+  state.historyUndo = [];
+  state.historyRedo = [];
   state.currentFileIdx = -1;
   state.currentPageIdx = -1;
+
   renderFileOptions();
   renderThumbs();
   drawCurrentPage();
   updateSummary();
 
-  if (!files.length) {
-    setStatus("Выбери файлы");
-    return;
-  }
+  els.fileCount.textContent = String(files.length);
+  els.dropText.textContent = files.length ? (files.length === 1 ? files[0].name : `${files.length} файлов выбрано`) : "Перетащите файлы сюда";
 
-  setStatus("Подготовка превью...");
+  if (!files.length) return;
+
   els.processBtn.disabled = true;
+  setStatus("Подготовка превью...");
 
   try {
     for (let i = 0; i < files.length; i += 1) {
       const file = files[i];
       log(`Подготовка [${i + 1}/${files.length}]: ${file.name}`);
-      const ctx = await buildContext(file, i);
-      if (!ctx) {
+      const context = await buildContext(file, i);
+      if (!context) {
         log(`Пропуск ${file.name}: формат не поддерживается`);
         continue;
       }
-      state.contexts.push(ctx);
-      getContextAreas(ctx.id);
+      state.contexts.push(context);
+      getContextAreas(context.id);
+      getContextBrushes(context.id);
     }
 
-    if (!state.contexts.length) {
-      setStatus("Нет поддерживаемых файлов");
-      return;
+    if (state.contexts.length) {
+      selectFile(0);
+      setStatus(`Готово (${state.contexts.length})`);
     }
-
-    selectFile(0);
-    setStatus(`Готово (${state.contexts.length} файлов)`);
   } catch (error) {
     setStatus("Ошибка подготовки");
     log(`ОШИБКА подготовки: ${normalizeError(error)}`);
@@ -735,6 +1013,18 @@ async function loadInputFiles() {
   } finally {
     els.processBtn.disabled = false;
   }
+}
+
+function buildBrushMaskForTarget(context, page, targetWidth, targetHeight) {
+  const source = getPageBrushCanvas(context.id, page, false);
+  if (!source || !canvasHasInk(source)) return null;
+
+  const target = document.createElement("canvas");
+  target.width = targetWidth;
+  target.height = targetHeight;
+  const g = target.getContext("2d", { willReadFrequently: true });
+  g.drawImage(source, 0, 0, targetWidth, targetHeight);
+  return target;
 }
 
 async function processPdfContext(context, config) {
@@ -749,6 +1039,7 @@ async function processPdfContext(context, config) {
     const page = await pdfSrc.getPage(i);
     const scale = 2;
     const viewport = page.getViewport({ scale });
+
     const canvas = document.createElement("canvas");
     canvas.width = Math.floor(viewport.width);
     canvas.height = Math.floor(viewport.height);
@@ -762,24 +1053,21 @@ async function processPdfContext(context, config) {
     }
 
     const custom = getPageAreas(context.id, i);
-    custom.forEach(([x, y, w, h]) => {
-      rects.push(clampRect([x * scale, y * scale, w * scale, h * scale], canvas.width, canvas.height));
-    });
+    custom.forEach(([x, y, w, h]) => rects.push(clampRect([x * scale, y * scale, w * scale, h * scale], canvas.width, canvas.height)));
 
-    await inpaintCanvas(canvas, rects);
+    const pageMeta = context.pages.find((p) => p.pageNum === i);
+    const brushMask = pageMeta ? buildBrushMaskForTarget(context, pageMeta, canvas.width, canvas.height) : null;
+
+    await inpaintCanvas(canvas, rects, 5, brushMask);
 
     const jpgBytes = await new Promise((resolve, reject) => {
-      canvas.toBlob(
-        async (blob) => {
-          if (!blob) {
-            reject(new Error("canvas.toBlob вернул пустой результат для PDF-страницы"));
-            return;
-          }
-          resolve(new Uint8Array(await blob.arrayBuffer()));
-        },
-        "image/jpeg",
-        0.95
-      );
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          reject(new Error("canvas.toBlob вернул пустой результат для PDF-страницы"));
+          return;
+        }
+        resolve(new Uint8Array(await blob.arrayBuffer()));
+      }, "image/jpeg", 0.95);
     });
 
     const jpg = await outPdf.embedJpg(jpgBytes);
@@ -789,9 +1077,8 @@ async function processPdfContext(context, config) {
   }
 
   const out = await outPdf.save();
-  const fileName = withCleanSuffix(file.name, "pdf");
-  downloadBytes(out, fileName, "application/pdf");
-  log(`PDF: ${file.name} -> готово (${fileName})`);
+  downloadBytes(out, withCleanSuffix(file.name, "pdf"), "application/pdf");
+  log(`PDF: ${file.name} -> готово`);
 }
 
 async function processPptxContext(context, config) {
@@ -799,44 +1086,57 @@ async function processPptxContext(context, config) {
   log(`PPTX: ${file.name} -> старт`);
 
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  const mediaRectMap = {};
+  const mediaMap = {};
 
   context.pages.forEach((page) => {
     const refRects = [];
-    if (config.removeDefault) {
-      refRects.push([...config.pptxRectRef]);
-    }
-    const custom = getPageAreas(context.id, page.pageNum);
-    custom.forEach((r) => refRects.push([...r]));
+    if (config.removeDefault) refRects.push([...config.pptxRectRef]);
+    getPageAreas(context.id, page.pageNum).forEach((r) => refRects.push([...r]));
 
-    if (!refRects.length) return;
+    const hasBrush = canvasHasInk(getPageBrushCanvas(context.id, page, false));
+
+    if (!refRects.length && !hasBrush) return;
 
     page.mediaTargets.forEach((mediaPath) => {
       if (!isProcessableImage(mediaPath)) return;
       if (!zip.file(mediaPath)) return;
-      if (!mediaRectMap[mediaPath]) mediaRectMap[mediaPath] = [];
-      mediaRectMap[mediaPath].push(...refRects);
+      if (!mediaMap[mediaPath]) mediaMap[mediaPath] = { rects: [], brushPages: [] };
+      mediaMap[mediaPath].rects.push(...refRects);
+      if (hasBrush) mediaMap[mediaPath].brushPages.push(page.pageNum);
     });
   });
 
-  const entries = Object.entries(mediaRectMap);
   let processed = 0;
 
-  for (const [mediaPath, refRectsRaw] of entries) {
-    const refRects = normalizeRects(refRectsRaw);
+  for (const [mediaPath, payload] of Object.entries(mediaMap)) {
     const entry = zip.file(mediaPath);
     if (!entry) continue;
 
-    const srcBlob = new Blob([await entry.async("uint8array")]);
-    const canvas = await blobToCanvas(srcBlob);
+    const canvas = await blobToCanvas(new Blob([await entry.async("uint8array")]));
     const sx = canvas.width / REF_PPTX_WIDTH;
     const sy = canvas.height / REF_PPTX_HEIGHT;
 
-    const pixelRects = refRects.map(([x, y, w, h]) =>
+    const rects = normalizeRects(payload.rects).map(([x, y, w, h]) =>
       clampRect([x * sx, y * sy, w * sx, h * sy], canvas.width, canvas.height)
     );
 
-    await inpaintCanvas(canvas, pixelRects);
+    let mergedBrushMask = null;
+    if (payload.brushPages.length) {
+      mergedBrushMask = document.createElement("canvas");
+      mergedBrushMask.width = canvas.width;
+      mergedBrushMask.height = canvas.height;
+      const mg = mergedBrushMask.getContext("2d");
+
+      for (const pn of uniqueStrings(payload.brushPages)) {
+        const page = context.pages.find((p) => p.pageNum === pn);
+        if (!page) continue;
+        const bm = buildBrushMaskForTarget(context, page, canvas.width, canvas.height);
+        if (bm) mg.drawImage(bm, 0, 0);
+      }
+      if (!canvasHasInk(mergedBrushMask)) mergedBrushMask = null;
+    }
+
+    await inpaintCanvas(canvas, rects, 5, mergedBrushMask);
 
     const ext = getImageExt(mediaPath);
     const mime = ext === "png" ? "image/png" : "image/jpeg";
@@ -846,23 +1146,18 @@ async function processPptxContext(context, config) {
       canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error(`canvas.toBlob пустой для ${mediaPath}`))), mime, quality)
     );
 
-    const outBytes = new Uint8Array(await outBlob.arrayBuffer());
-    zip.file(mediaPath, outBytes);
+    zip.file(mediaPath, new Uint8Array(await outBlob.arrayBuffer()));
     processed += 1;
     log(`PPTX: ${file.name} -> ${mediaPath} обновлен`);
   }
 
   const outPptx = await zip.generateAsync({ type: "uint8array" });
-  const fileName = withCleanSuffix(file.name, "pptx");
-  downloadBytes(outPptx, fileName, "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+  downloadBytes(outPptx, withCleanSuffix(file.name, "pptx"), "application/vnd.openxmlformats-officedocument.presentationml.presentation");
   log(`PPTX: ${file.name} -> готово, изображений обработано: ${processed}`);
 }
 
 async function run() {
-  if (!state.contexts.length) {
-    setStatus("Сначала выбери файлы");
-    return;
-  }
+  if (!state.contexts.length) return;
 
   els.processBtn.disabled = true;
   els.log.textContent = "";
@@ -871,17 +1166,14 @@ async function run() {
   try {
     await waitForOpenCV();
     const config = getConfig();
-    setStatus(`Обработка (${state.contexts.length} шт.)...`);
+    setStatus(`Обработка (${state.contexts.length})...`);
     log(`Начало обработки: ${state.contexts.length} файлов`);
 
     for (let i = 0; i < state.contexts.length; i += 1) {
       const context = state.contexts[i];
       log(`\n[${i + 1}/${state.contexts.length}] ${context.file.name}`);
-      if (context.type === "pdf") {
-        await processPdfContext(context, config);
-      } else if (context.type === "pptx") {
-        await processPptxContext(context, config);
-      }
+      if (context.type === "pdf") await processPdfContext(context, config);
+      else if (context.type === "pptx") await processPptxContext(context, config);
     }
 
     setStatus("Готово");
@@ -895,9 +1187,7 @@ async function run() {
   }
 }
 
-els.fileInput.addEventListener("change", () => {
-  loadInputFiles();
-});
+els.fileInput.addEventListener("change", loadInputFiles);
 
 els.browserFileSelect.addEventListener("change", () => {
   const idx = Number(els.browserFileSelect.value);
@@ -905,33 +1195,45 @@ els.browserFileSelect.addEventListener("change", () => {
 });
 
 els.prevBtn.addEventListener("click", () => {
-  const ctx = getCurrentContext();
-  if (!ctx || !ctx.pages.length) return;
-  if (state.currentPageIdx <= 0) return;
+  const context = getCurrentContext();
+  if (!context || state.currentPageIdx <= 0) return;
   state.currentPageIdx -= 1;
   renderThumbs();
   drawCurrentPage();
+  updateSummary();
 });
 
 els.nextBtn.addEventListener("click", () => {
-  const ctx = getCurrentContext();
-  if (!ctx || !ctx.pages.length) return;
-  if (state.currentPageIdx >= ctx.pages.length - 1) return;
+  const context = getCurrentContext();
+  if (!context || state.currentPageIdx >= context.pages.length - 1) return;
   state.currentPageIdx += 1;
   renderThumbs();
   drawCurrentPage();
+  updateSummary();
 });
 
 els.removeLastBtn.addEventListener("click", removeLastArea);
 els.clearPageBtn.addEventListener("click", clearCurrentPageAreas);
 els.processBtn.addEventListener("click", run);
 
+els.btnRect.addEventListener("click", () => setTool("rect"));
+els.btnBrush.addEventListener("click", () => setTool("brush"));
+els.btnEraser.addEventListener("click", () => setTool("eraser"));
+
+els.brushSize.addEventListener("input", () => {
+  state.brushSizePx = Number(els.brushSize.value) || 16;
+  els.brushSizeVal.textContent = `${state.brushSizePx}px`;
+});
+
+els.btnUndo.addEventListener("click", undo);
+els.btnRedo.addEventListener("click", redo);
+
 els.previewCanvas.addEventListener("pointerdown", onCanvasPointerDown);
 els.previewCanvas.addEventListener("pointermove", onCanvasPointerMove);
 window.addEventListener("pointerup", onCanvasPointerUp);
 
-window.addEventListener("resize", () => {
-  drawCurrentPage();
-});
+window.addEventListener("resize", drawCurrentPage);
 
+setTool("rect");
 updateSummary();
+els.log.textContent = "Watermark Remover готов. Выберите файлы для обработки.\n";

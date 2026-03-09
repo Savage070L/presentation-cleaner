@@ -3,31 +3,56 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Watermark Remover Web</title>
+    <title>Presentation Cleaner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="app">
-      <header class="hero">
-        <h1>Presentation Cleaner</h1>
+    <main class="wrapper">
+      <header class="header">
+        <div class="header-icon">🪄</div>
+        <div class="header-text">
+          <h1>Presentation Cleaner</h1>
+        </div>
       </header>
 
-      <section class="panel">
-        <h2>Входные файлы</h2>
-        <input id="fileInput" type="file" multiple accept=".pdf,.pptx,.PDF,.PPTX" />
-        <p class="hint">Файлы не отправляются на сервер, обработка идет только на вашем устройстве.</p>
-      </section>
+      <section class="main-card neu-flat">
+        <div class="top-grid">
+          <div class="top-col">
+            <div class="section-label">📁 Источник файлов</div>
+            <label class="file-zone-inner neu-inset" for="fileInput">
+              <div class="icon">📄</div>
+              <p id="dropText">Перетащите файлы сюда</p>
+              <span>PDF и PPTX поддерживаются</span>
+            </label>
+            <input id="fileInput" type="file" multiple accept=".pdf,.pptx,.PDF,.PPTX" hidden />
+          </div>
 
-      <section class="panel options">
-        <h2>Параметры NotebookLM</h2>
-        <label class="row inline">
-          <input id="removeDefault" type="checkbox" checked />
-          Удалять дефолтный водяной знак NotebookLM
-        </label>
-      </section>
+          <div class="top-col">
+            <div class="section-label">⚙️ Опции обработки</div>
+            <label class="option-item neu-flat" for="removeDefault">
+              <input id="removeDefault" type="checkbox" checked />
+              <div class="option-text">
+                <h4>Водяной знак NotebookLM</h4>
+                <p>Удалить со всех страниц/слайдов</p>
+              </div>
+              <div class="option-badge">PDF+PPTX</div>
+            </label>
 
-      <section class="panel browser">
-        <h2>Дополнительные области</h2>
+            <div class="stat-chip-h neu-flat">
+              <span class="stat-h-val" id="fileCount">0</span>
+              <span class="stat-h-lbl">Файлов</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="section-label">🎯 Дополнительная область</div>
+        <div class="area-chips" id="areaChips">
+          <span class="no-areas">Доп. область не задана</span>
+        </div>
+
         <div class="browser-top">
           <label>
             Файл
@@ -35,30 +60,45 @@
           </label>
           <span id="areasSummary" class="hint">Доп. области: 0</span>
         </div>
+
+        <div class="toolbar-wrap neu-inset">
+          <button id="btnRect" type="button" class="neu-btn tool-btn active-rect">⬜ Область</button>
+          <button id="btnBrush" type="button" class="neu-btn tool-btn">🖌 Кисть</button>
+          <button id="btnEraser" type="button" class="neu-btn tool-btn">🧹 Ластик</button>
+          <div class="slider-wrap" id="brushSizeWrap">
+            <span class="slider-label" id="brushSizeLabel">Размер кисти</span>
+            <input id="brushSize" type="range" min="4" max="80" value="16" />
+            <span class="slider-val" id="brushSizeVal">16px</span>
+          </div>
+          <div class="tool-divider"></div>
+          <button id="btnUndo" type="button" class="neu-btn tool-btn">↩ Отменить</button>
+          <button id="btnRedo" type="button" class="neu-btn tool-btn">↪ Вернуть</button>
+          <button id="clearPageBtn" type="button" class="neu-btn tool-btn">🗑 Очистить страницу</button>
+        </div>
+
         <div class="browser-main">
-          <aside id="thumbs" class="thumbs"></aside>
+          <aside id="thumbs" class="thumbs neu-inset"></aside>
           <div class="preview-col">
             <div class="preview-toolbar">
-              <button id="prevBtn" type="button">Назад</button>
+              <button id="prevBtn" type="button" class="neu-btn page-nav">◀ Назад</button>
               <span id="pageIndicator">— / —</span>
-              <button id="nextBtn" type="button">Вперед</button>
-              <button id="removeLastBtn" type="button" class="secondary">Удалить последнюю</button>
-              <button id="clearPageBtn" type="button" class="secondary">Очистить страницу</button>
+              <button id="nextBtn" type="button" class="neu-btn page-nav">Вперед ▶</button>
+              <button id="removeLastBtn" type="button" class="neu-btn page-nav danger">Удалить последнюю</button>
             </div>
-            <div id="previewWrap" class="preview-wrap">
+            <div id="previewWrap" class="preview-wrap neu-inset">
               <canvas id="previewCanvas"></canvas>
             </div>
           </div>
         </div>
-      </section>
 
-      <section class="panel actions">
-        <button id="processBtn">Обработать и скачать</button>
-      </section>
+        <section class="actions">
+          <button id="processBtn" class="start-btn">🚀 НАЧАТЬ ОБРАБОТКУ</button>
+        </section>
 
-      <section class="panel">
-        <h2>Лог</h2>
-        <pre id="log"></pre>
+        <section>
+          <div class="section-label">📋 Журнал обработки</div>
+          <pre id="log" class="log-box neu-inset"></pre>
+        </section>
       </section>
     </main>
 
