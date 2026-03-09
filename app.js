@@ -336,7 +336,8 @@ function invalidateAppliedPreview(contextId, pageNum) {
 
 function setPreviewMode(enabled) {
   state.previewMode = enabled;
-  els.btnApply.hidden = enabled;
+  // Keep "Apply" always visible; show "Edit" additionally in preview mode.
+  els.btnApply.hidden = false;
   els.btnEdit.hidden = !enabled;
   updateCursorVisibility();
   drawCurrentPage();
