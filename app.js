@@ -368,6 +368,13 @@ function updateBrushCursorPosition(event) {
   els.brushCursor.style.top = `${event.clientY}px`;
 }
 
+function syncCanvasHoverFromPoint(event) {
+  if (!event) return;
+  const r = els.previewWrap.getBoundingClientRect();
+  const inside = event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom;
+  state.canvasHover = inside;
+}
+
 function countAllAreas() {
   let total = 0;
 
@@ -547,7 +554,7 @@ function drawCurrentPage() {
       return img;
     })
     .then((img) => {
-      const maxWidth = Math.max(200, els.previewWrap.clientWidth - 20);
+      const maxWidth = Math.max(200, els.previewWrap.clientWidth);
       // Always fit by width and keep full aspect ratio.
       // This removes right-side empty gutters and avoids bottom cropping.
       const displayScale = maxWidth / page.width;
@@ -1355,6 +1362,11 @@ els.previewWrap.addEventListener("pointerleave", () => {
 });
 els.previewWrap.addEventListener("pointermove", (event) => {
   state.canvasHover = true;
+  updateBrushCursorPosition(event);
+  updateCursorVisibility();
+});
+window.addEventListener("mousemove", (event) => {
+  syncCanvasHoverFromPoint(event);
   updateBrushCursorPosition(event);
   updateCursorVisibility();
 });
