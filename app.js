@@ -338,6 +338,7 @@ function setPreviewMode(enabled) {
   state.previewMode = enabled;
   els.btnApply.hidden = enabled;
   els.btnEdit.hidden = !enabled;
+  updateCursorVisibility();
   drawCurrentPage();
 }
 
@@ -356,7 +357,7 @@ function updateBrushCursorVisual() {
 }
 
 function updateCursorVisibility() {
-  const visible = state.canvasHover && !state.previewMode && (state.currentTool === "brush" || state.currentTool === "eraser");
+  const visible = state.canvasHover && (state.currentTool === "brush" || state.currentTool === "eraser");
   els.brushCursor.style.display = visible ? "block" : "none";
 }
 
