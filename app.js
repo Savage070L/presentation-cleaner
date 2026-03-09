@@ -361,6 +361,12 @@ function updateCursorVisibility() {
   els.brushCursor.style.display = visible ? "block" : "none";
 }
 
+function updateBrushCursorPosition(event) {
+  if (!event) return;
+  els.brushCursor.style.left = `${event.clientX}px`;
+  els.brushCursor.style.top = `${event.clientY}px`;
+}
+
 function countAllAreas() {
   let total = 0;
 
@@ -541,8 +547,9 @@ function drawCurrentPage() {
     })
     .then((img) => {
       const maxWidth = Math.max(200, els.previewWrap.clientWidth - 20);
-      const maxHeight = Math.max(260, els.previewWrap.clientHeight - 20);
-      const displayScale = Math.min(maxWidth / page.width, maxHeight / page.height);
+      // Always fit by width and keep full aspect ratio.
+      // This removes right-side empty gutters and avoids bottom cropping.
+      const displayScale = maxWidth / page.width;
       const cw = Math.max(1, Math.round(page.width * displayScale));
       const ch = Math.max(1, Math.round(page.height * displayScale));
 
@@ -1336,17 +1343,19 @@ els.btnRedo.addEventListener("click", redo);
 els.previewCanvas.addEventListener("pointerdown", onCanvasPointerDown);
 els.previewCanvas.addEventListener("pointermove", onCanvasPointerMove);
 window.addEventListener("pointerup", onCanvasPointerUp);
-els.previewCanvas.addEventListener("pointerenter", () => {
+els.previewWrap.addEventListener("pointerenter", (event) => {
   state.canvasHover = true;
+  updateBrushCursorPosition(event);
   updateCursorVisibility();
 });
-els.previewCanvas.addEventListener("pointerleave", () => {
+els.previewWrap.addEventListener("pointerleave", () => {
   state.canvasHover = false;
   updateCursorVisibility();
 });
-els.previewCanvas.addEventListener("pointermove", (event) => {
-  els.brushCursor.style.left = `${event.clientX}px`;
-  els.brushCursor.style.top = `${event.clientY}px`;
+els.previewWrap.addEventListener("pointermove", (event) => {
+  state.canvasHover = true;
+  updateBrushCursorPosition(event);
+  updateCursorVisibility();
 });
 
 window.addEventListener("resize", drawCurrentPage);
