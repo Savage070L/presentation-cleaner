@@ -37,6 +37,7 @@ const els = {
   btnEraser: document.getElementById("btnEraser"),
   btnApply: document.getElementById("btnApply"),
   btnEdit: document.getElementById("btnEdit"),
+  btnDownloadPage: document.getElementById("btnDownloadPage"),
   brushSize: document.getElementById("brushSize"),
   brushSizeVal: document.getElementById("brushSizeVal"),
   brushSizeLabel: document.getElementById("brushSizeLabel"),
@@ -888,20 +889,7 @@ async function applyCurrentPreview() {
     state.applyingPreview = true;
     els.btnApply.disabled = true;
 
-    await waitForOpenCV();
-
-    const base = document.createElement("canvas");
-    base.width = page.width;
-    base.height = page.height;
-    base.getContext("2d", { willReadFrequently: true }).drawImage(page.previewCanvas || page.image, 0, 0, page.width, page.height);
-
-    const rects = getPageAreas(context.id, page.pageNum).map(([x, y, w, h]) =>
-      clampRect([x * page.coordScaleX, y * page.coordScaleY, w * page.coordScaleX, h * page.coordScaleY], page.width, page.height)
-    );
-
-    const brushMask = buildBrushMaskForTarget(context, page, page.width, page.height);
-    await inpaintCanvas(base, rects, 5, brushMask);
-
+    const base = await buildAppliedPreviewCanvas(context, page);
     setAppliedPreviewCanvas(context.id, page.pageNum, base);
     setPreviewMode(true);
   } catch (error) {
@@ -909,6 +897,48 @@ async function applyCurrentPreview() {
   } finally {
     state.applyingPreview = false;
     els.btnApply.disabled = false;
+  }
+}
+
+async function buildAppliedPreviewCanvas(context, page) {
+  await waitForOpenCV();
+
+  const base = document.createElement("canvas");
+  base.width = page.width;
+  base.height = page.height;
+  base.getContext("2d", { willReadFrequently: true }).drawImage(page.previewCanvas || page.image, 0, 0, page.width, page.height);
+
+  const rects = getPageAreas(context.id, page.pageNum).map(([x, y, w, h]) =>
+    clampRect([x * page.coordScaleX, y * page.coordScaleY, w * page.coordScaleX, h * page.coordScaleY], page.width, page.height)
+  );
+
+  const brushMask = buildBrushMaskForTarget(context, page, page.width, page.height);
+  await inpaintCanvas(base, rects, 5, brushMask);
+  return base;
+}
+
+async function downloadCurrentPage() {
+  if (state.applyingPreview) return;
+  const context = getCurrentContext();
+  const page = getCurrentPage();
+  if (!context || !page) return;
+
+  try {
+    state.applyingPreview = true;
+    els.btnDownloadPage.disabled = true;
+    const prepared = getAppliedPreviewCanvas(context.id, page.pageNum) || (await buildAppliedPreviewCanvas(context, page));
+    setAppliedPreviewCanvas(context.id, page.pageNum, prepared);
+
+    const link = document.createElement("a");
+    link.download = `${context.file.name.replace(/\.[^.]+$/, "")}_page_${page.pageNum}_clean.png`;
+    link.href = prepared.toDataURL("image/png");
+    link.click();
+    log(`⬇ Скачана страница ${page.pageNum}`);
+  } catch (error) {
+    log(`ОШИБКА скачивания страницы: ${normalizeError(error)}`);
+  } finally {
+    state.applyingPreview = false;
+    els.btnDownloadPage.disabled = false;
   }
 }
 
@@ -1334,6 +1364,7 @@ els.clearPageBtn.addEventListener("click", clearCurrentPageAreas);
 els.processBtn.addEventListener("click", run);
 els.btnApply.addEventListener("click", applyCurrentPreview);
 els.btnEdit.addEventListener("click", () => setPreviewMode(false));
+els.btnDownloadPage.addEventListener("click", downloadCurrentPage);
 
 els.btnRect.addEventListener("click", () => setTool("rect"));
 els.btnBrush.addEventListener("click", () => setTool("brush"));
