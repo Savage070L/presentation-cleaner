@@ -92,6 +92,33 @@ body {
   font-weight: 800;
 }
 
+.header-meta {
+  margin-left: auto;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.powered-line {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.tg-line {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.tg-line a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .main-card {
   padding: 26px;
 }
@@ -544,5 +571,15 @@ input[type="range"] {
 
   .stats-row {
     flex-direction: column;
+  }
+
+  .header {
+    flex-wrap: wrap;
+  }
+
+  .header-meta {
+    width: 100%;
+    text-align: left;
+    margin-left: 0;
   }
 }
