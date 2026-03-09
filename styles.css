@@ -292,6 +292,11 @@ select {
   color: #fff;
 }
 
+.tool-btn.download-btn {
+  background: linear-gradient(135deg, #5b8dee, #3a6fd8);
+  color: #fff;
+}
+
 .slider-wrap {
   display: flex;
   align-items: center;

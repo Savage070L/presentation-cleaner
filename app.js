@@ -929,10 +929,15 @@ async function downloadCurrentPage() {
     const prepared = getAppliedPreviewCanvas(context.id, page.pageNum) || (await buildAppliedPreviewCanvas(context, page));
     setAppliedPreviewCanvas(context.id, page.pageNum, prepared);
 
+    const pngBlob = await new Promise((resolve, reject) =>
+      prepared.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Не удалось создать PNG blob"))), "image/png")
+    );
+    const url = URL.createObjectURL(pngBlob);
     const link = document.createElement("a");
     link.download = `${context.file.name.replace(/\.[^.]+$/, "")}_page_${page.pageNum}_clean.png`;
-    link.href = prepared.toDataURL("image/png");
+    link.href = url;
     link.click();
+    URL.revokeObjectURL(url);
     log(`⬇ Скачана страница ${page.pageNum}`);
   } catch (error) {
     log(`ОШИБКА скачивания страницы: ${normalizeError(error)}`);
