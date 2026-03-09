@@ -251,20 +251,6 @@ function updatePageIndicator() {
   els.pageIndicator.textContent = `${state.currentPageIdx + 1} / ${ctx.pages.length}`;
 }
 
-function ensurePageImage(page) {
-  if (page.imagePromise) return page.imagePromise;
-  page.imagePromise = new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      page.image = img;
-      resolve(img);
-    };
-    img.onerror = reject;
-    img.src = page.previewUrl;
-  });
-  return page.imagePromise;
-}
-
 function drawCurrentPage() {
   const page = getCurrentPage();
   const ctx = getCurrentContext();
@@ -279,7 +265,23 @@ function drawCurrentPage() {
     return;
   }
 
-  ensurePageImage(page)
+  Promise.resolve(page.previewCanvas || null)
+    .then(async (sourceCanvas) => {
+      if (sourceCanvas) {
+        return sourceCanvas;
+      }
+      if (page.image) {
+        return page.image;
+      }
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = page.previewUrl;
+      });
+      page.image = img;
+      return img;
+    })
     .then((img) => {
       const maxWidth = Math.max(200, els.previewWrap.clientWidth - 20);
       const maxHeight = Math.max(260, els.previewWrap.clientHeight - 20);
@@ -354,7 +356,7 @@ function renderThumbs() {
     });
 
     const img = document.createElement("img");
-    img.src = page.previewUrl;
+    img.src = page.thumbUrl || page.previewUrl;
     img.alt = page.label;
 
     const meta = document.createElement("div");
@@ -528,7 +530,7 @@ function isProcessableImage(path) {
 
 async function buildPdfContext(file, id) {
   const bytes = await file.arrayBuffer();
-  const src = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const src = await pdfjsLib.getDocument({ data: bytes, disableWorker: true }).promise;
   const pages = [];
 
   for (let i = 1; i <= src.numPages; i += 1) {
@@ -544,7 +546,9 @@ async function buildPdfContext(file, id) {
     pages.push({
       pageNum: i,
       label: `Страница ${i}`,
+      previewCanvas: canvas,
       previewUrl: canvas.toDataURL("image/jpeg", 0.85),
+      thumbUrl: canvas.toDataURL("image/jpeg", 0.6),
       width: canvas.width,
       height: canvas.height,
       coordScaleX: previewScale,
@@ -631,24 +635,31 @@ async function buildPptxContext(file, id) {
     );
 
     let previewUrl = "";
+    let thumbUrl = "";
     let width = REF_PPTX_WIDTH;
     let height = REF_PPTX_HEIGHT;
+    let previewCanvas = null;
 
     const previewMedia = mediaTargets.find((path) => isProcessableImage(path) && zip.file(path));
     if (previewMedia) {
       const imageBytes = await zip.file(previewMedia).async("uint8array");
       const canvas = await blobToCanvas(new Blob([imageBytes]));
+      previewCanvas = canvas;
       width = canvas.width;
       height = canvas.height;
       previewUrl = canvas.toDataURL("image/jpeg", 0.85);
+      thumbUrl = canvas.toDataURL("image/jpeg", 0.6);
     } else {
       previewUrl = buildPlaceholderDataUrl(`Слайд ${i + 1}`);
+      thumbUrl = previewUrl;
     }
 
     pages.push({
       pageNum: i + 1,
       label: `Слайд ${i + 1}`,
+      previewCanvas,
       previewUrl,
+      thumbUrl,
       width,
       height,
       coordScaleX: width / REF_PPTX_WIDTH,
@@ -731,7 +742,7 @@ async function processPdfContext(context, config) {
   log(`PDF: ${file.name} -> старт`);
 
   const bytes = await file.arrayBuffer();
-  const pdfSrc = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const pdfSrc = await pdfjsLib.getDocument({ data: bytes, disableWorker: true }).promise;
   const outPdf = await PDFDocument.create();
 
   for (let i = 1; i <= pdfSrc.numPages; i += 1) {
