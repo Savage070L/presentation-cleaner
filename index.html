@@ -10,7 +10,6 @@
     <main class="app">
       <header class="hero">
         <h1>Presentation Cleaner</h1>
-        <p>Локальная обработка PDF/PPTX в браузере (GitHub Pages)</p>
       </header>
 
       <section class="panel">
@@ -25,30 +24,10 @@
           <input id="removeDefault" type="checkbox" checked />
           Удалять дефолтный водяной знак NotebookLM
         </label>
-        <div class="coords">
-          <div>
-            <h3>PDF (points)</h3>
-            <div class="grid">
-              <label>X <input id="pdfX" type="number" value="1268" /></label>
-              <label>Y <input id="pdfY" type="number" value="738" /></label>
-              <label>W <input id="pdfW" type="number" value="113" /></label>
-              <label>H <input id="pdfH" type="number" value="40" /></label>
-            </div>
-          </div>
-          <div>
-            <h3>PPTX ref (1376x768)</h3>
-            <div class="grid">
-              <label>X <input id="pptxX" type="number" value="1265" /></label>
-              <label>Y <input id="pptxY" type="number" value="740" /></label>
-              <label>W <input id="pptxW" type="number" value="103" /></label>
-              <label>H <input id="pptxH" type="number" value="18" /></label>
-            </div>
-          </div>
-        </div>
       </section>
 
       <section class="panel browser">
-        <h2>Дополнительные области (как в desktop-версии)</h2>
+        <h2>Дополнительные области</h2>
         <div class="browser-top">
           <label>
             Файл
@@ -69,14 +48,12 @@
             <div id="previewWrap" class="preview-wrap">
               <canvas id="previewCanvas"></canvas>
             </div>
-            <p class="hint">Выделяй область мышью на превью. Координаты сохраняются отдельно по файлу и странице/слайду.</p>
           </div>
         </div>
       </section>
 
       <section class="panel actions">
         <button id="processBtn">Обработать и скачать</button>
-        <span id="status">Готово к запуску</span>
       </section>
 
       <section class="panel">

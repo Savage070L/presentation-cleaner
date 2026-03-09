@@ -7,6 +7,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 const REF_PPTX_WIDTH = 1376;
 const REF_PPTX_HEIGHT = 768;
+const DEFAULT_PDF_RECT_PTS = [1268, 738, 113, 40];
+const DEFAULT_PPTX_RECT_REF = [1265, 740, 103, 18];
 
 const els = {
   fileInput: document.getElementById("fileInput"),
@@ -14,14 +16,6 @@ const els = {
   status: document.getElementById("status"),
   log: document.getElementById("log"),
   removeDefault: document.getElementById("removeDefault"),
-  pdfX: document.getElementById("pdfX"),
-  pdfY: document.getElementById("pdfY"),
-  pdfW: document.getElementById("pdfW"),
-  pdfH: document.getElementById("pdfH"),
-  pptxX: document.getElementById("pptxX"),
-  pptxY: document.getElementById("pptxY"),
-  pptxW: document.getElementById("pptxW"),
-  pptxH: document.getElementById("pptxH"),
   browserFileSelect: document.getElementById("browserFileSelect"),
   thumbs: document.getElementById("thumbs"),
   previewCanvas: document.getElementById("previewCanvas"),
@@ -61,29 +55,16 @@ function log(message) {
 }
 
 function setStatus(message) {
-  els.status.textContent = message;
-}
-
-function getNumeric(el, fallback = 0) {
-  const value = Number(el.value);
-  return Number.isFinite(value) ? value : fallback;
+  if (els.status) {
+    els.status.textContent = message;
+  }
 }
 
 function getConfig() {
   return {
     removeDefault: els.removeDefault.checked,
-    pdfRectPts: [
-      getNumeric(els.pdfX),
-      getNumeric(els.pdfY),
-      getNumeric(els.pdfW),
-      getNumeric(els.pdfH)
-    ],
-    pptxRectRef: [
-      getNumeric(els.pptxX),
-      getNumeric(els.pptxY),
-      getNumeric(els.pptxW),
-      getNumeric(els.pptxH)
-    ]
+    pdfRectPts: [...DEFAULT_PDF_RECT_PTS],
+    pptxRectRef: [...DEFAULT_PPTX_RECT_REF]
   };
 }
 
