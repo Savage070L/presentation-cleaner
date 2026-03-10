@@ -627,17 +627,17 @@ function drawCurrentPage() {
           g.fillText(String(idx + 1), x + 6, y + 12);
           g.fillStyle = "rgba(255, 107, 53, 0.25)";
         });
+      }
 
-        if (state.rectDraw.active && state.currentTool === "rect") {
-          const x = Math.min(state.rectDraw.startX, state.rectDraw.tempX);
-          const y = Math.min(state.rectDraw.startY, state.rectDraw.tempY);
-          const w = Math.abs(state.rectDraw.tempX - state.rectDraw.startX);
-          const h = Math.abs(state.rectDraw.tempY - state.rectDraw.startY);
-          g.strokeStyle = "#f59e0b";
-          g.setLineDash([6, 4]);
-          g.strokeRect(x, y, w, h);
-          g.setLineDash([]);
-        }
+      if (state.rectDraw.active && state.currentTool === "rect") {
+        const x = Math.min(state.rectDraw.startX, state.rectDraw.tempX);
+        const y = Math.min(state.rectDraw.startY, state.rectDraw.tempY);
+        const w = Math.abs(state.rectDraw.tempX - state.rectDraw.startX);
+        const h = Math.abs(state.rectDraw.tempY - state.rectDraw.startY);
+        g.strokeStyle = "#f59e0b";
+        g.setLineDash([6, 4]);
+        g.strokeRect(x, y, w, h);
+        g.setLineDash([]);
       }
 
       updatePageIndicator();
