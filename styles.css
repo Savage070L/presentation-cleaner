@@ -207,9 +207,11 @@ body {
 
 .stat-chip-h {
   display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
-  padding: 14px 20px;
+  gap: 8px;
+  padding: 24px 20px;
   flex: 1;
 }
 
@@ -260,14 +262,17 @@ body {
 
 .stat-h-val {
   color: var(--accent);
-  font-size: 30px;
+  font-size: 56px;
   font-weight: 800;
+  line-height: 1;
 }
 
 .stat-h-lbl {
   color: var(--text-muted);
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
   text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .divider {

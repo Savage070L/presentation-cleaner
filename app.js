@@ -15,8 +15,6 @@ const els = {
   dropText: document.getElementById("dropText"),
   fileCount: document.getElementById("fileCount"),
   doneCount: document.getElementById("doneCount"),
-  savePath: document.getElementById("savePath"),
-  savePathBtn: document.getElementById("savePathBtn"),
   brushCursor: document.getElementById("brushCursor"),
   processBtn: document.getElementById("processBtn"),
   status: document.getElementById("status"),
@@ -242,28 +240,7 @@ async function saveBytes(bytes, fileName, mimeType) {
   return { savedToDir: false };
 }
 
-async function chooseOutputDir() {
-  if (!window.showDirectoryPicker) {
-    log("⚠️ Ваш браузер не поддерживает выбор папки. Используются стандартные загрузки.");
-    return;
-  }
 
-  try {
-    const handle = await window.showDirectoryPicker({ mode: "readwrite" });
-    state.outputDirHandle = handle;
-    els.savePath.value = `Папка: ${handle.name}`;
-    log(`📁 Папка сохранения выбрана: ${handle.name}`);
-  } catch (error) {
-    if (error?.name === "AbortError") return;
-    if (error?.name === "SecurityError" || error?.name === "NotAllowedError") {
-      state.outputDirHandle = null;
-      els.savePath.value = "По умолчанию стоит загрузки";
-      log("⚠️ Эту папку выбрать нельзя (системная/защищенная). Выберите обычную папку, например Downloads/processed.");
-      return;
-    }
-    log(`⚠️ Не удалось выбрать папку: ${normalizeError(error)}`);
-  }
-}
 
 function withCleanSuffix(name, newExt) {
   const dot = name.lastIndexOf(".");
@@ -1386,7 +1363,6 @@ async function run() {
 }
 
 els.fileInput.addEventListener("change", loadInputFiles);
-els.savePathBtn.addEventListener("click", chooseOutputDir);
 
 els.browserFileSelect.addEventListener("change", () => {
   const idx = Number(els.browserFileSelect.value);
