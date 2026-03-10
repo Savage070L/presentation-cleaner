@@ -494,6 +494,18 @@ function applyPageSnapshot(snapshot) {
   const page = context.pages.find((p) => p.pageNum === snapshot.pageNum);
   if (!page) return;
 
+  if (snapshot.hasBaseCanvas) {
+    if (snapshot.baseCanvas) {
+      const c = document.createElement("canvas");
+      c.width = snapshot.baseCanvas.width;
+      c.height = snapshot.baseCanvas.height;
+      c.getContext("2d", { willReadFrequently: true }).drawImage(snapshot.baseCanvas, 0, 0);
+      page.previewCanvas = c;
+    } else {
+      page.previewCanvas = null;
+    }
+  }
+
   getContextAreas(context.id)[page.pageNum] = snapshot.rects.map((r) => [...r]);
 
   if (snapshot.brushData) {
@@ -912,11 +924,43 @@ async function applyCurrentPreview() {
     state.applyingPreview = true;
     els.btnApply.disabled = true;
 
+    const before = getPageSnapshot(context.id, page);
+    let oldBaseCanvas = null;
+    if (page.previewCanvas) {
+      oldBaseCanvas = document.createElement("canvas");
+      oldBaseCanvas.width = page.previewCanvas.width;
+      oldBaseCanvas.height = page.previewCanvas.height;
+      oldBaseCanvas.getContext("2d").drawImage(page.previewCanvas, 0, 0);
+    }
+    before.baseCanvas = oldBaseCanvas;
+    before.hasBaseCanvas = true;
+
     const base = await buildAppliedPreviewCanvas(context, page);
-    setAppliedPreviewCanvas(context.id, page.pageNum, base);
-    setPreviewMode(true);
+
+    page.previewCanvas = base;
+
+    getContextAreas(context.id)[page.pageNum] = [];
+    const brush = getPageBrushCanvas(context.id, page, false);
+    if (brush) brush.getContext("2d").clearRect(0, 0, brush.width, brush.height);
+
+    const after = getPageSnapshot(context.id, page);
+    const newBaseCanvas = document.createElement("canvas");
+    newBaseCanvas.width = base.width;
+    newBaseCanvas.height = base.height;
+    newBaseCanvas.getContext("2d").drawImage(base, 0, 0);
+    after.baseCanvas = newBaseCanvas;
+    after.hasBaseCanvas = true;
+
+    pushHistory(before, after);
+
+    delete state.appliedPreview[pageKey(context.id, page.pageNum)];
+    setPreviewMode(false);
+
+    renderThumbs();
+    drawCurrentPage();
+    updateSummary();
   } catch (error) {
-    log(`ОШИБКА предпросмотра: ${normalizeError(error)}`);
+    log(`ОШИБКА применения: ${normalizeError(error)}`);
   } finally {
     state.applyingPreview = false;
     els.btnApply.disabled = false;
